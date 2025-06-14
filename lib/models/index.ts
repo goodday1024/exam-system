@@ -1,0 +1,5 @@
+export { default as User, type IUser } from './User'
+export { default as Question, type IQuestion, type QuestionType } from './Question'
+export { default as Exam, type IExam, type IExamQuestion } from './Exam'
+export { default as ExamResult, type IExamResult } from './ExamResult'
+export { default as Appeal, type IAppeal, type AppealStatus } from './Appeal'

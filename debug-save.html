@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <title>Debug Save Answers</title>
+</head>
+<body>
+    <h1>Debug Save Answers</h1>
+    <button onclick="testSave()">Test Save Answer</button>
+    <div id="result"></div>
+    
+    <script>
+        async function testSave() {
+            const resultDiv = document.getElementById('result');
+            
+            try {
+                const response = await fetch('/api/student/exam/675a5b7b5b7b5b7b5b7b5b7b/save', {
+                    method: 'POST',
+                    headers: {
+                        'Content-Type': 'application/json',
+                    },
+                    body: JSON.stringify({ 
+                        answers: {
+                            'question1': 'test answer 1',
+                            'question2': 'test answer 2'
+                        }
+                    }),
+                });
+                
+                const data = await response.json();
+                resultDiv.innerHTML = `
+                    <h3>Response:</h3>
+                    <p>Status: ${response.status}</p>
+                    <p>Data: ${JSON.stringify(data, null, 2)}</p>
+                `;
+            } catch (error) {
+                resultDiv.innerHTML = `
+                    <h3>Error:</h3>
+                    <p>${error.message}</p>
+                `;
+            }
+        }
+    </script>
+</body>
+</html>
