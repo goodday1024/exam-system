@@ -51,6 +51,10 @@ pids
 # Coverage directory used by tools like istanbul
 coverage/
 
+# Temporary folders
+tmp/
+temp/
+
 # Optional npm cache directory
 .npm
 

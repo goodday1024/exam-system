@@ -24,7 +24,8 @@ interface CodeExecutionResult {
 
 // 执行代码的函数
 async function executeCode(code: string, input: string, language: string = 'javascript'): Promise<CodeExecutionResult> {
-  const tempDir = path.join(process.cwd(), 'temp')
+  // 在无服务器环境中使用 /tmp 目录，在本地开发中使用项目目录下的 temp
+  const tempDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'temp')
   let fileName: string
   let filePath: string
   let executablePath: string | null = null
@@ -64,13 +65,14 @@ async function executeCode(code: string, input: string, language: string = 'java
         })
 
         compileChild.on('close', async (code) => {
-          if (code !== 0) {
-            // 编译失败，清理源文件
-            try {
-              await fs.unlink(filePath)
-            } catch (err) {
-              console.error('清理源文件失败:', err)
-            }
+            if (code !== 0) {
+              // 编译失败，清理源文件
+              try {
+                await fs.access(filePath)
+                await fs.unlink(filePath)
+              } catch (err) {
+                // 文件不存在或清理失败，忽略错误
+              }
             resolve({
               success: false,
               error: `编译错误: ${compileError}`,
@@ -124,11 +126,14 @@ async function executeCode(code: string, input: string, language: string = 'java
           execChild.on('error', async (err) => {
             // 执行错误，清理临时文件
             try {
+              await fs.access(filePath)
               await fs.unlink(filePath)
+            } catch {}
+            try {
+              await fs.access(executablePath!)
               await fs.unlink(executablePath!)
-            } catch (cleanupErr) {
-              console.error('清理临时文件失败:', cleanupErr)
-            }
+            } catch {}
+            // 忽略清理错误
             resolve({
               success: false,
               error: `执行错误: ${err.message}`,
@@ -146,10 +151,10 @@ async function executeCode(code: string, input: string, language: string = 'java
         compileChild.on('error', async (err) => {
           // 编译进程错误，清理源文件
           try {
+            await fs.access(filePath)
             await fs.unlink(filePath)
-          } catch (cleanupErr) {
-            console.error('清理源文件失败:', cleanupErr)
-          }
+          } catch {}
+          // 忽略清理错误
           resolve({
             success: false,
             error: `编译进程错误: ${err.message}`,
@@ -188,10 +193,10 @@ async function executeCode(code: string, input: string, language: string = 'java
 
           // 清理临时文件
           try {
+            await fs.access(filePath)
             await fs.unlink(filePath)
-          } catch (err) {
-            console.error('清理JavaScript临时文件失败:', err)
-          }
+          } catch {}
+          // 忽略清理错误
 
           if (code === 0 && !error) {
             resolve({
@@ -211,10 +216,10 @@ async function executeCode(code: string, input: string, language: string = 'java
         child.on('error', async (err) => {
           // 进程错误，清理临时文件
           try {
+            await fs.access(filePath)
             await fs.unlink(filePath)
-          } catch (cleanupErr) {
-            console.error('清理JavaScript临时文件失败:', cleanupErr)
-          }
+          } catch {}
+          // 忽略清理错误
           resolve({
             success: false,
             error: `进程错误: ${err.message}`,
@@ -232,13 +237,16 @@ async function executeCode(code: string, input: string, language: string = 'java
   } catch (error) {
     // 异常情况下清理临时文件
     try {
+      await fs.access(filePath)
       await fs.unlink(filePath)
-      if (executablePath) {
+    } catch {}
+    if (executablePath) {
+      try {
+        await fs.access(executablePath)
         await fs.unlink(executablePath)
-      }
-    } catch (cleanupErr) {
-      console.error('异常情况下清理临时文件失败:', cleanupErr)
+      } catch {}
     }
+    // 忽略清理错误
     return {
       success: false,
       error: `执行失败: ${error instanceof Error ? error.message : String(error)}`
