@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { toZonedTime, format } from 'date-fns-tz'
 
 interface Question {
   id: string
@@ -123,7 +124,7 @@ export default function ExamResultsPage({ params }: { params: { id: string } }) 
         result.score || 0,
         exam.questions.reduce((sum, q) => sum + q.points, 0),
         result.tabSwitches,
-        new Date(result.submittedAt).toLocaleString()
+        format(toZonedTime(new Date(result.submittedAt), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { timeZone: 'Asia/Shanghai' })
       ].join(','))
     ].join('\n')
 
@@ -291,7 +292,7 @@ export default function ExamResultsPage({ params }: { params: { id: string } }) 
                         </span>
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap text-sm text-gray-500">
-                        {new Date(result.submittedAt).toLocaleString()}
+                        {format(toZonedTime(new Date(result.submittedAt), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { timeZone: 'Asia/Shanghai' })}
                       </td>
                       <td className="px-6 py-4 whitespace-nowrap">
                         <span className={`inline-flex px-2 py-1 text-xs font-semibold rounded-full ${

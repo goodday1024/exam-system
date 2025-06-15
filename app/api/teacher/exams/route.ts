@@ -3,6 +3,7 @@ import connectDB from '@/lib/mongodb'
 import { Exam, Question } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
 import mongoose from 'mongoose'
+import { fromZonedTime } from 'date-fns-tz'
 
 // 获取考试列表
 export async function GET(request: NextRequest) {
@@ -143,9 +144,10 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    // 验证时间
-    const start = new Date(startTime)
-    const end = new Date(endTime)
+    // 验证时间并转换为 UTC
+    const timeZone = 'Asia/Shanghai'
+    const start = fromZonedTime(startTime, timeZone)
+    const end = fromZonedTime(endTime, timeZone)
     
     if (start >= end) {
       return NextResponse.json(

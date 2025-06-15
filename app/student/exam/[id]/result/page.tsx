@@ -4,6 +4,7 @@ import { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
+import { toZonedTime, format } from 'date-fns-tz'
 
 interface Question {
   id: string
@@ -172,7 +173,7 @@ export default function ExamResultPage({ params }: { params: { id: string } }) {
             </div>
           </div>
           <div className="mt-4 text-sm text-gray-500">
-            提交时间：{new Date(exam.examResult.submittedAt).toLocaleString()}
+            提交时间：{format(toZonedTime(new Date(exam.examResult.submittedAt), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { timeZone: 'Asia/Shanghai' })}
           </div>
         </div>
 

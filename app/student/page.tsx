@@ -12,6 +12,7 @@ import {
 } from '@heroicons/react/24/outline'
 import { format } from 'date-fns'
 import { zhCN } from 'date-fns/locale'
+import { toZonedTime } from 'date-fns-tz'
 
 interface User {
   id: string
@@ -195,10 +196,10 @@ export default function StudentDashboard() {
                               <span>时长: {exam.duration}分钟</span>
                             </div>
                             <div>
-                              开始时间: {format(new Date(exam.startTime), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
+                              开始时间: {format(toZonedTime(new Date(exam.startTime), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
                             </div>
                             <div>
-                              结束时间: {format(new Date(exam.endTime), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
+                              结束时间: {format(toZonedTime(new Date(exam.endTime), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { locale: zhCN })}
                             </div>
                           </div>
                           
