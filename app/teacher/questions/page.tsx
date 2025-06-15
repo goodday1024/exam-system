@@ -141,9 +141,17 @@ export default function QuestionsPage() {
     let parsedOptions = ['', '', '', '']
     if (question.options) {
       try {
-        const parsed = JSON.parse(question.options)
-        if (Array.isArray(parsed)) {
-          parsedOptions = parsed
+        let options = question.options
+        // 处理双重转义的JSON字符串
+        if (typeof options === 'string') {
+          options = JSON.parse(options)
+          // 如果解析后仍然是字符串，再次解析
+          if (typeof options === 'string') {
+            options = JSON.parse(options)
+          }
+        }
+        if (Array.isArray(options)) {
+          parsedOptions = options
         }
       } catch (error) {
         console.error('Failed to parse options:', error)
@@ -502,6 +510,45 @@ export default function QuestionsPage() {
                           <p className="mt-1 text-sm text-gray-600">
                             {question.content.substring(0, 200)}{question.content.length > 200 ? '...' : ''}
                           </p>
+                          {question.type === 'MULTIPLE_CHOICE' && question.options && (
+                            <div className="mt-2">
+                              <p className="text-xs text-gray-500 mb-1">选项：</p>
+                              <div className="text-xs text-gray-600">
+                                {(() => {
+                                  try {
+                                    let options = question.options
+                                    // 处理双重转义的JSON字符串
+                                    if (typeof options === 'string') {
+                                      options = JSON.parse(options)
+                                      // 如果解析后仍然是字符串，再次解析
+                                      if (typeof options === 'string') {
+                                        options = JSON.parse(options)
+                                      }
+                                    }
+                                    if (Array.isArray(options)) {
+                                      return options.map((opt: string, i: number) => (
+                                        <span key={i} className="inline-block mr-4">
+                                          {String.fromCharCode(65 + i)}. {opt.substring(0, 30)}{opt.length > 30 ? '...' : ''}
+                                        </span>
+                                      ))
+                                    }
+                                    return <span className="text-red-500">选项格式错误</span>
+                                  } catch (error) {
+                                    return <span className="text-red-500">选项解析错误</span>
+                                  }
+                                })()}
+                              </div>
+                            </div>
+                          )}
+                          {question.type === 'TRUE_FALSE' && (
+                            <div className="mt-2">
+                              <p className="text-xs text-gray-500 mb-1">选项：</p>
+                              <div className="text-xs text-gray-600">
+                                <span className="inline-block mr-4">A. 正确</span>
+                                <span className="inline-block mr-4">B. 错误</span>
+                              </div>
+                            </div>
+                          )}
                         </div>
                         <div className="flex items-center space-x-2">
                           <button

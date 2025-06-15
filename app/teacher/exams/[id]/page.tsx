@@ -1,10 +1,14 @@
 'use client'
 
-import { useState, useEffect } from 'react'
+import React, { useState, useEffect } from 'react'
 import { useRouter } from 'next/navigation'
 import Link from 'next/link'
 import toast from 'react-hot-toast'
 import { toZonedTime, format } from 'date-fns-tz'
+import jsPDF from 'jspdf'
+import html2canvas from 'html2canvas'
+import ReactMarkdown from 'react-markdown'
+import { createRoot } from 'react-dom/client'
 
 interface Question {
   _id: string
@@ -106,6 +110,306 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
+  const exportToPDF = async () => {
+    if (!exam) return
+    
+    try {
+      toast.loading('正在生成PDF...', { id: 'pdf-export' })
+      
+      // 计算总分
+      const totalPoints = exam.questions.reduce((sum, q) => sum + (q.points || 0), 0)
+      
+      // 生成Markdown内容
+      const typeMap = {
+        'MULTIPLE_CHOICE': '选择题',
+        'TRUE_FALSE': '判断题', 
+        'PROGRAMMING': '编程题'
+      }
+      
+      let markdownContent = `# ${exam.title}\n\n`
+      
+      if (exam.description) {
+        markdownContent += `${exam.description}\n\n`
+      }
+      
+      markdownContent += `## 考试信息\n\n`
+      markdownContent += `- **开始时间：** ${format(toZonedTime(new Date(exam.startTime), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { timeZone: 'Asia/Shanghai' })}\n`
+      markdownContent += `- **结束时间：** ${format(toZonedTime(new Date(exam.endTime), 'Asia/Shanghai'), 'yyyy-MM-dd HH:mm', { timeZone: 'Asia/Shanghai' })}\n`
+      markdownContent += `- **考试时长：** ${exam.duration} 分钟\n`
+      markdownContent += `- **最大切屏次数：** ${exam.maxTabSwitches} 次\n`
+      markdownContent += `- **题目数量：** ${exam.questions.length} 题\n`
+      markdownContent += `- **总分：** ${totalPoints} 分\n\n`
+      
+      markdownContent += `## 试题内容\n\n`
+      
+      exam.questions.forEach((question, index) => {
+        const questionPoints = question.points || 0
+        markdownContent += `### ${index + 1}. ${question.title} [${typeMap[question.type] || question.type}] (${questionPoints}分)\n\n`
+        
+        if (question.content) {
+          markdownContent += `${question.content}\n\n`
+        }
+        
+        // 处理选择题选项
+        if (question.options && question.type === 'MULTIPLE_CHOICE') {
+          try {
+            let options = question.options
+            // 处理双重转义的JSON字符串
+            if (typeof options === 'string') {
+              options = JSON.parse(options)
+              // 如果解析后仍然是字符串，再次解析
+              if (typeof options === 'string') {
+                options = JSON.parse(options)
+              }
+            }
+            if (Array.isArray(options)) {
+              options.forEach((opt: string, i: number) => {
+                markdownContent += `${String.fromCharCode(65 + i)}. ${opt}\n`
+              })
+              markdownContent += `\n`
+            }
+          } catch (e) {
+            console.error('选项解析错误:', e)
+            markdownContent += `*选项解析错误*\n\n`
+          }
+        }
+        
+        // 判断题选项
+        if (question.type === 'TRUE_FALSE') {
+          markdownContent += `A. 正确\n`
+          markdownContent += `B. 错误\n\n`
+        }
+        
+        markdownContent += `---\n\n`
+      })
+      
+      markdownContent += `\n*导出时间：${format(new Date(), 'yyyy-MM-dd HH:mm:ss')}*`
+      
+      // 创建临时容器用于渲染Markdown
+      const printContainer = document.createElement('div')
+      printContainer.style.position = 'absolute'
+      printContainer.style.left = '-9999px'
+      printContainer.style.top = '0'
+      printContainer.style.width = '210mm'
+      printContainer.style.backgroundColor = 'white'
+      printContainer.style.padding = '20mm'
+      printContainer.style.fontFamily = 'Arial, sans-serif'
+      printContainer.style.fontSize = '14px'
+      printContainer.style.lineHeight = '1.6'
+      document.body.appendChild(printContainer)
+      
+      // 使用ReactMarkdown渲染Markdown内容
+      const root = createRoot(printContainer)
+      
+      // 等待React渲染完成
+      await new Promise<void>((resolve) => {
+        root.render(
+          <div className="markdown-content" style={{
+            fontFamily: 'Arial, sans-serif',
+            fontSize: '14px',
+            lineHeight: '1.6',
+            color: 'black',
+            maxWidth: '170mm',
+            margin: '0 auto'
+          }}>
+            <ReactMarkdown
+              components={{
+                h1: ({children}) => <h1 style={{textAlign: 'center', borderBottom: '2px solid #333', paddingBottom: '10px', marginBottom: '20px'}}>{children}</h1>,
+                h2: ({children}) => <h2 style={{color: '#333', borderBottom: '1px solid #ddd', paddingBottom: '5px', marginTop: '30px', marginBottom: '15px'}}>{children}</h2>,
+                h3: ({children}) => <h3 style={{color: '#333', marginTop: '20px', marginBottom: '10px'}}>{children}</h3>,
+                strong: ({children}) => <strong>{children}</strong>,
+                em: ({children}) => <em style={{color: '#666'}}>{children}</em>,
+                hr: () => <hr style={{border: 'none', borderTop: '1px solid #eee', margin: '20px 0'}} />,
+                p: ({children}) => <div style={{margin: '5px 0'}}>{children}</div>,
+                ul: ({children}) => <ul style={{paddingLeft: '20px', margin: '8px 0'}}>{children}</ul>,
+                li: ({children}) => <li style={{margin: '5px 0'}}>{children}</li>,
+                img: ({src, alt, title}) => {
+                  const [imageSrc, setImageSrc] = React.useState(src)
+                  const [isLoading, setIsLoading] = React.useState(true)
+                  const [hasError, setHasError] = React.useState(false)
+                  
+                  React.useEffect(() => {
+                    if (!src) return
+                    
+                    // 如果是外部链接，转换为 base64
+                    if (src.startsWith('http')) {
+                      const convertToBase64 = async () => {
+                        try {
+                          // 使用代理或者直接尝试获取
+                          const response = await fetch(`/api/proxy-image?url=${encodeURIComponent(src)}`)
+                          if (response.ok) {
+                            const blob = await response.blob()
+                            const reader = new FileReader()
+                            reader.onload = () => {
+                              setImageSrc(reader.result as string)
+                              setIsLoading(false)
+                            }
+                            reader.readAsDataURL(blob)
+                          } else {
+                            // 如果代理失败，尝试直接使用原始链接
+                            setImageSrc(src)
+                            setIsLoading(false)
+                          }
+                        } catch (error) {
+                          console.error('Failed to convert image to base64:', error)
+                          // 回退到原始链接
+                          setImageSrc(src)
+                          setIsLoading(false)
+                        }
+                      }
+                      convertToBase64()
+                    } else {
+                      // 处理相对路径
+                      const processedSrc = src.startsWith('/') ? `${window.location.origin}${src}` : 
+                        src.startsWith('./') ? `${window.location.origin}/${src.slice(2)}` :
+                        `${window.location.origin}/${src}`
+                      setImageSrc(processedSrc)
+                      setIsLoading(false)
+                    }
+                  }, [src])
+                  
+                  if (hasError) {
+                    return (
+                      <div style={{
+                        padding: '10px',
+                        background: '#f5f5f5',
+                        border: '1px dashed #ccc',
+                        textAlign: 'center',
+                        color: '#666',
+                        margin: '10px 0'
+                      }}>
+                        [图片加载失败: {alt || '图片'}]
+                      </div>
+                    )
+                  }
+                  
+                  return (
+                    <img 
+                      src={imageSrc} 
+                      alt={alt || ''} 
+                      title={title || ''}
+                      style={{
+                        maxWidth: '100%',
+                        height: 'auto',
+                        margin: '10px 0',
+                        display: isLoading ? 'none' : 'block'
+                      }}
+                      onLoad={() => {
+                        console.log('Image loaded successfully:', imageSrc)
+                        setIsLoading(false)
+                      }}
+                      onError={() => {
+                        console.error('Image failed to load:', imageSrc)
+                        setHasError(true)
+                        setIsLoading(false)
+                      }}
+                    />
+                  )
+                }
+              }}
+            >
+              {markdownContent}
+            </ReactMarkdown>
+          </div>
+        )
+        
+        // 等待DOM更新和图片加载
+        setTimeout(() => {
+          // 检查所有图片是否已加载完成
+          const images = printContainer.querySelectorAll('img')
+          let loadedCount = 0
+          const totalImages = images.length
+          
+          if (totalImages === 0) {
+            resolve()
+            return
+          }
+          
+          const checkAllLoaded = () => {
+            loadedCount++
+            if (loadedCount === totalImages) {
+              resolve()
+            }
+          }
+          
+          images.forEach((img) => {
+             if (img.complete && img.naturalHeight !== 0) {
+               checkAllLoaded()
+             } else {
+               img.onload = () => {
+                 console.log('Image loaded successfully:', img.src)
+                 checkAllLoaded()
+               }
+               img.onerror = () => {
+                 console.error('Image failed to load:', img.src)
+                 // 创建占位符文本
+                 const placeholder = document.createElement('div')
+                 placeholder.textContent = `[图片加载失败: ${img.alt || '图片'}]`
+                 placeholder.style.cssText = 'padding: 10px; background: #f5f5f5; border: 1px dashed #ccc; text-align: center; color: #666; margin: 10px 0;'
+                 img.parentNode?.replaceChild(placeholder, img)
+                 checkAllLoaded()
+               }
+               // 强制重新加载图片
+               const originalSrc = img.src
+               img.src = ''
+               img.src = originalSrc
+             }
+           })
+          
+          // 设置超时，避免无限等待
+          setTimeout(() => {
+            if (loadedCount < totalImages) {
+              console.warn('Some images did not load within timeout')
+              resolve()
+            }
+          }, 5000)
+        }, 500)
+      })
+      
+      // 使用html2canvas生成图片
+      const canvas = await html2canvas(printContainer, {
+        scale: 2,
+        useCORS: true,
+        allowTaint: true,
+        backgroundColor: '#ffffff'
+      })
+      
+      // 清理React根节点和移除临时容器
+      root.unmount()
+      document.body.removeChild(printContainer)
+      
+      // 创建PDF
+      const imgData = canvas.toDataURL('image/png')
+      const pdf = new jsPDF('p', 'mm', 'a4')
+      
+      const imgWidth = 210
+      const pageHeight = 297
+      const imgHeight = (canvas.height * imgWidth) / canvas.width
+      let heightLeft = imgHeight
+      let position = 0
+      
+      // 添加第一页
+      pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+      heightLeft -= pageHeight
+      
+      // 如果内容超过一页，添加更多页面
+      while (heightLeft >= 0) {
+        position = heightLeft - imgHeight
+        pdf.addPage()
+        pdf.addImage(imgData, 'PNG', 0, position, imgWidth, imgHeight)
+        heightLeft -= pageHeight
+      }
+      
+      // 下载PDF
+      pdf.save(`${exam.title}_试卷.pdf`)
+      toast.success('PDF导出成功', { id: 'pdf-export' })
+      
+    } catch (error) {
+      console.error('PDF导出失败:', error)
+      toast.error('PDF导出失败，请重试', { id: 'pdf-export' })
+    }
+  }
+
   const getExamStatus = () => {
     if (!exam) return { text: '', color: '' }
     
@@ -164,6 +468,12 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
             >
               返回列表
             </Link>
+            <button
+              onClick={exportToPDF}
+              className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
+            >
+              导出PDF
+            </button>
             <button
               onClick={togglePublish}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${

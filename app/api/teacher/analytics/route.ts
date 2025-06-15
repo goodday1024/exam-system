@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
 import { User, Exam, Question, ExamResult } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
+import mongoose from 'mongoose'
 
 // 获取分析数据
 export async function GET(request: NextRequest) {
@@ -20,13 +21,13 @@ export async function GET(request: NextRequest) {
 
     // 获取基础统计数据
     const [totalExams, totalStudents, totalQuestions, totalExamResults] = await Promise.all([
-      Exam.countDocuments({ createdBy: decoded.userId }),
+      Exam.countDocuments({ createdBy: new mongoose.Types.ObjectId(decoded.userId) }),
       User.countDocuments({ role: 'STUDENT' }),
-      Question.countDocuments({ createdBy: decoded.userId }),
+      Question.countDocuments({ createdBy: new mongoose.Types.ObjectId(decoded.userId) }),
       ExamResult.countDocuments()
     ])
 
-    // 计算平均分数
+    // 计算平均分数 - 修复版本
     const averageScoreResult = await ExamResult.aggregate([
       {
         $lookup: {
@@ -38,7 +39,8 @@ export async function GET(request: NextRequest) {
       },
       {
         $match: {
-          'exam.createdBy': decoded.userId
+          'exam.createdBy': new mongoose.Types.ObjectId(decoded.userId),
+          score: { $ne: null, $gte: 0 }
         }
       },
       {
@@ -51,10 +53,12 @@ export async function GET(request: NextRequest) {
 
     const averageScore = averageScoreResult.length > 0 ? averageScoreResult[0].averageScore : 0
 
-    // 获取考试统计
+    // 获取考试统计 - 修复版本
     const examStats = await Exam.aggregate([
       {
-        $match: { createdBy: decoded.userId }
+        $match: { 
+          createdBy: new mongoose.Types.ObjectId(decoded.userId)
+        }
       },
       {
         $lookup: {
@@ -67,17 +71,33 @@ export async function GET(request: NextRequest) {
       {
         $addFields: {
           participantCount: { $size: '$results' },
+          validResults: {
+            $filter: {
+              input: '$results',
+              cond: { 
+                $and: [
+                  { $ne: ['$$this.score', null] },
+                  { $ne: ['$$this.score', undefined] },
+                  { $gte: ['$$this.score', 0] }
+                ]
+              }
+            }
+          }
+        }
+      },
+      {
+        $addFields: {
           averageScore: {
             $cond: {
-              if: { $gt: [{ $size: '$results' }, 0] },
-              then: { $avg: '$results.score' },
+              if: { $gt: [{ $size: '$validResults' }, 0] },
+              then: { $avg: '$validResults.score' },
               else: 0
             }
           },
           passCount: {
             $size: {
               $filter: {
-                input: '$results',
+                input: '$validResults',
                 cond: { $gte: ['$$this.score', 60] }
               }
             }
@@ -88,8 +108,8 @@ export async function GET(request: NextRequest) {
         $addFields: {
           passRate: {
             $cond: {
-              if: { $gt: ['$participantCount', 0] },
-              then: { $multiply: [{ $divide: ['$passCount', '$participantCount'] }, 100] },
+              if: { $gt: [{ $size: '$validResults' }, 0] },
+              then: { $multiply: [{ $divide: ['$passCount', { $size: '$validResults' }] }, 100] },
               else: 0
             }
           }
@@ -121,7 +141,7 @@ export async function GET(request: NextRequest) {
       passRate: exam.passRate || 0
     }))
 
-    // 获取校区统计
+    // 获取校区统计 - 修复版本
     const campusStats = await User.aggregate([
       {
         $match: { role: 'STUDENT' }
@@ -129,36 +149,50 @@ export async function GET(request: NextRequest) {
       {
         $lookup: {
           from: 'examresults',
-          localField: '_id',
-          foreignField: 'studentId',
-          as: 'examResults'
-        }
-      },
-      {
-        $lookup: {
-          from: 'exams',
-          localField: 'examResults.examId',
-          foreignField: '_id',
-          as: 'exams'
-        }
-      },
-      {
-        $match: {
-          'exams.createdBy': decoded.userId
+          let: { studentId: '$_id' },
+          pipeline: [
+            {
+              $match: {
+                $expr: { $eq: ['$studentId', '$$studentId'] }
+              }
+            },
+            {
+              $lookup: {
+                from: 'exams',
+                localField: 'examId',
+                foreignField: '_id',
+                as: 'exam'
+              }
+            },
+            {
+               $match: {
+                 'exam.createdBy': new mongoose.Types.ObjectId(decoded.userId)
+               }
+             },
+            {
+              $project: {
+                score: 1
+              }
+            }
+          ],
+          as: 'relevantResults'
         }
       },
       {
         $group: {
           _id: '$campus',
           studentCount: { $sum: 1 },
-          averageScore: {
-            $avg: {
+          totalScore: {
+            $sum: {
               $cond: {
-                if: { $gt: [{ $size: '$examResults' }, 0] },
-                then: { $avg: '$examResults.score' },
+                if: { $gt: [{ $size: '$relevantResults' }, 0] },
+                then: { $sum: '$relevantResults.score' },
                 else: 0
               }
             }
+          },
+          examCount: {
+            $sum: { $size: '$relevantResults' }
           }
         }
       },
@@ -166,7 +200,13 @@ export async function GET(request: NextRequest) {
         $project: {
           campus: '$_id',
           studentCount: 1,
-          averageScore: { $ifNull: ['$averageScore', 0] }
+          averageScore: {
+            $cond: {
+              if: { $gt: ['$examCount', 0] },
+              then: { $divide: ['$totalScore', '$examCount'] },
+              else: 0
+            }
+          }
         }
       },
       {
@@ -175,7 +215,7 @@ export async function GET(request: NextRequest) {
     ])
 
     // 获取最近活动（简化版本）
-    const recentExams = await Exam.find({ createdBy: decoded.userId })
+    const recentExams = await Exam.find({ createdBy: new mongoose.Types.ObjectId(decoded.userId) })
       .sort({ createdAt: -1 })
       .limit(5)
       .select('title createdAt isPublished')
@@ -183,7 +223,7 @@ export async function GET(request: NextRequest) {
     const recentResults = await ExamResult.find()
       .populate({
         path: 'examId',
-        match: { createdBy: decoded.userId },
+        match: { createdBy: new mongoose.Types.ObjectId(decoded.userId) },
         select: 'title'
       })
       .populate('studentId', 'name')
