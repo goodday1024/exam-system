@@ -474,6 +474,14 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
             >
               导出PDF
             </button>
+            {!exam.isPublished && (
+              <Link
+                href={`/teacher/exams/${exam._id}/edit`}
+                className="bg-orange-600 text-white px-6 py-2 rounded-lg hover:bg-orange-700 transition-colors"
+              >
+                编辑考试
+              </Link>
+            )}
             <button
               onClick={togglePublish}
               className={`px-4 py-2 rounded-lg font-medium transition-colors ${

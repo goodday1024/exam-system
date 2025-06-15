@@ -1,6 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
-import { Exam, ExamResult } from '@/lib/models'
+import { Exam, ExamResult, Question } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
 
 // 获取考试详情
@@ -89,7 +89,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     }
 
     const examId = params.id
-    const { isPublished } = await request.json()
+    const requestBody = await request.json()
 
     await connectDB()
 
@@ -106,15 +106,103 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       )
     }
 
+    // 如果只是更新发布状态
+    if (requestBody.isPublished !== undefined && Object.keys(requestBody).length === 1) {
+      const updatedExam = await Exam.findByIdAndUpdate(
+        examId,
+        {
+          isPublished: requestBody.isPublished,
+          updatedAt: new Date()
+        },
+        { new: true }
+      ).populate('createdBy', 'name email')
+
+      return NextResponse.json({
+        message: '考试更新成功',
+        exam: updatedExam
+      })
+    }
+
+    // 完整的考试编辑
+    const {
+      title,
+      description,
+      startTime,
+      endTime,
+      duration,
+      maxTabSwitches,
+      questionIds
+    } = requestBody
+
+    // 验证必填字段
+    if (!title || !startTime || !endTime || !duration) {
+      return NextResponse.json(
+        { error: '请填写所有必填字段' },
+        { status: 400 }
+      )
+    }
+
+    // 验证时间
+    const start = new Date(startTime)
+    const end = new Date(endTime)
+    if (start >= end) {
+      return NextResponse.json(
+        { error: '结束时间必须晚于开始时间' },
+        { status: 400 }
+      )
+    }
+
+    // 检查考试是否已发布（已发布的考试不能编辑）
+    if (exam.isPublished) {
+      return NextResponse.json(
+        { error: '已发布的考试无法编辑' },
+        { status: 400 }
+      )
+    }
+
+    // 验证题目ID（如果提供了）
+    let validQuestions: { questionId: string; order: number }[] = []
+    if (questionIds && Array.isArray(questionIds) && questionIds.length > 0) {
+      const questions = await Question.find({
+        _id: { $in: questionIds },
+        createdBy: decoded.userId
+      })
+
+      if (questions.length !== questionIds.length) {
+        return NextResponse.json(
+          { error: '部分题目不存在或无权限访问' },
+          { status: 400 }
+        )
+      }
+
+      // 转换为正确的格式
+      validQuestions = questionIds.map((questionId: string, index: number) => ({
+        questionId,
+        order: index + 1
+      }))
+    }
+
     // 更新考试
+    const updateData: any = {
+      title,
+      description: description || '',
+      startTime: start,
+      endTime: end,
+      duration: parseInt(duration),
+      maxTabSwitches: parseInt(maxTabSwitches) || 3,
+      updatedAt: new Date()
+    }
+
+    if (validQuestions.length > 0) {
+      updateData.questions = validQuestions
+    }
+
     const updatedExam = await Exam.findByIdAndUpdate(
       examId,
-      {
-        isPublished: isPublished !== undefined ? isPublished : exam.isPublished,
-        updatedAt: new Date()
-      },
+      updateData,
       { new: true }
-    ).populate('createdBy', 'name email')
+    ).populate('questions')
+     .populate('createdBy', 'name email')
 
     return NextResponse.json({
       message: '考试更新成功',
