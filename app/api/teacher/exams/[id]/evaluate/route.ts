@@ -25,7 +25,7 @@ class CodeJudgeClient {
 
   constructor() {
     this.baseUrl = process.env.SELF_HOSTED_JUDGE_URL || 'http://localhost:3001'
-    this.timeout = 30000 // 30秒超时
+    this.timeout = 1200000 // 120秒超时
   }
 
   // 执行代码
@@ -88,7 +88,7 @@ class CodeJudgeClient {
     try {
       const response = await fetch(`${this.baseUrl}/health`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(15000)
       })
       return response.ok
     } catch {
@@ -101,7 +101,7 @@ class CodeJudgeClient {
     try {
       const response = await fetch(`${this.baseUrl}/api/languages`, {
         method: 'GET',
-        signal: AbortSignal.timeout(5000)
+        signal: AbortSignal.timeout(15000)
       })
       if (response.ok) {
         const data = await response.json()
