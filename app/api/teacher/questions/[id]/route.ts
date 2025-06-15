@@ -16,7 +16,7 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       return NextResponse.json({ error: '权限不足' }, { status: 403 })
     }
 
-    const { title, content, type, options, correctAnswer, points, testCases, language } = await request.json()
+    const { title, content, type, options, correctAnswer, points, testCases, language, timeLimit, memoryLimit } = await request.json()
 
     if (!title || !content || !type || !correctAnswer) {
       return NextResponse.json(
@@ -50,7 +50,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         correctAnswer,
         points: points || 10,
         testCases: testCases || undefined,
-        language: language || undefined
+        language: language || undefined,
+        timeLimit: timeLimit || 1,
+        memoryLimit: memoryLimit || 512
       },
       { new: true }
     ).populate('createdBy', 'name email')

@@ -4,10 +4,6 @@ import { verifyToken } from '@/lib/jwt'
 import { Exam } from '@/lib/models'
 import { ExamResult } from '@/lib/models'
 import { Question } from '@/lib/models'
-import { spawn } from 'child_process'
-import fs from 'fs/promises'
-import path from 'path'
-import { v4 as uuidv4 } from 'uuid'
 
 interface TestCase {
   input: string
@@ -22,240 +18,112 @@ interface CodeExecutionResult {
   executionTime?: number
 }
 
-// 执行代码的函数
-async function executeCode(code: string, input: string, language: string = 'javascript'): Promise<CodeExecutionResult> {
-  // 在无服务器环境中使用 /tmp 目录，在本地开发中使用项目目录下的 temp
-  const tempDir = process.env.VERCEL ? '/tmp' : path.join(process.cwd(), 'temp')
-  let fileName: string
-  let filePath: string
-  let executablePath: string | null = null
+// 自建代码评测服务客户端类
+class CodeJudgeClient {
+  private baseUrl: string
+  private timeout: number
 
-  // 根据语言设置文件扩展名
-  if (language === 'cpp' || language === 'c++') {
-    fileName = `${uuidv4()}.cpp`
-    filePath = path.join(tempDir, fileName)
-    executablePath = path.join(tempDir, `${uuidv4()}_exec`)
-  } else {
-    fileName = `${uuidv4()}.js`
-    filePath = path.join(tempDir, fileName)
+  constructor() {
+    this.baseUrl = process.env.SELF_HOSTED_JUDGE_URL || 'http://localhost:3001'
+    this.timeout = 30000 // 30秒超时
   }
 
-  try {
-    // 确保临时目录存在
-    await fs.mkdir(tempDir, { recursive: true })
-
-    // 写入代码文件
-    await fs.writeFile(filePath, code)
-
-    const startTime = Date.now()
-
-    if (language === 'cpp' || language === 'c++') {
-      // C++ 编译和执行
-      return new Promise((resolve) => {
-        // 先编译
-        const compileChild = spawn('g++', ['-o', executablePath!, filePath], {
-          timeout: 10000, // 10秒编译超时
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
-
-        let compileError = ''
-
-        compileChild.stderr.on('data', (data) => {
-          compileError += data.toString()
-        })
-
-        compileChild.on('close', async (code) => {
-            if (code !== 0) {
-              // 编译失败，清理源文件
-              try {
-                await fs.access(filePath)
-                await fs.unlink(filePath)
-              } catch (err) {
-                // 文件不存在或清理失败，忽略错误
-              }
-            resolve({
-              success: false,
-              error: `编译错误: ${compileError}`,
-              executionTime: Date.now() - startTime
-            })
-            return
-          }
-
-          // 编译成功，执行程序
-          const execChild = spawn(executablePath!, [], {
-            timeout: 5000, // 5秒执行超时
-            stdio: ['pipe', 'pipe', 'pipe']
-          })
-
-          let output = ''
-          let execError = ''
-
-          execChild.stdout.on('data', (data) => {
-            output += data.toString()
-          })
-
-          execChild.stderr.on('data', (data) => {
-            execError += data.toString()
-          })
-
-          execChild.on('close', (execCode) => {
-            const executionTime = Date.now() - startTime
-            
-            console.log('=== C++ 代码执行结果 ===')
-            console.log('输出内容:', output)
-            console.log('错误信息:', execError)
-            console.log('退出码:', execCode)
-            console.log('执行时间:', executionTime, 'ms')
-            console.log('========================')
-
-            if (execCode === 0 && !execError) {
-              resolve({
-                success: true,
-                output: output.trim(),
-                executionTime
-              })
-            } else {
-              resolve({
-                success: false,
-                error: execError || `程序退出码: ${execCode}`,
-                executionTime
-              })
-            }
-          })
-
-          execChild.on('error', async (err) => {
-            // 执行错误，清理临时文件
-            try {
-              await fs.access(filePath)
-              await fs.unlink(filePath)
-            } catch {}
-            try {
-              await fs.access(executablePath!)
-              await fs.unlink(executablePath!)
-            } catch {}
-            // 忽略清理错误
-            resolve({
-              success: false,
-              error: `执行错误: ${err.message}`,
-              executionTime: Date.now() - startTime
-            })
-          })
-
-          // 发送输入数据
-          if (input) {
-            execChild.stdin.write(input)
-          }
-          execChild.stdin.end()
-        })
-
-        compileChild.on('error', async (err) => {
-          // 编译进程错误，清理源文件
-          try {
-            await fs.access(filePath)
-            await fs.unlink(filePath)
-          } catch {}
-          // 忽略清理错误
-          resolve({
-            success: false,
-            error: `编译进程错误: ${err.message}`,
-            executionTime: Date.now() - startTime
-          })
-        })
-      })
-    } else {
-      // JavaScript 执行（原有逻辑）
-      return new Promise((resolve) => {
-        const child = spawn('node', [filePath], {
-          timeout: 5000, // 5秒超时
-          stdio: ['pipe', 'pipe', 'pipe']
-        })
-
-        let output = ''
-        let error = ''
-
-        child.stdout.on('data', (data) => {
-          output += data.toString()
-        })
-
-        child.stderr.on('data', (data) => {
-          error += data.toString()
-        })
-
-        child.on('close', async (code) => {
-          const executionTime = Date.now() - startTime
-          
-          console.log('=== JavaScript 代码执行结果 ===')
-          console.log('输出内容:', output)
-          console.log('错误信息:', error)
-          console.log('退出码:', code)
-          console.log('执行时间:', executionTime, 'ms')
-          console.log('===============================')
-
-          // 清理临时文件
-          try {
-            await fs.access(filePath)
-            await fs.unlink(filePath)
-          } catch {}
-          // 忽略清理错误
-
-          if (code === 0 && !error) {
-            resolve({
-              success: true,
-              output: output.trim(),
-              executionTime
-            })
-          } else {
-            resolve({
-              success: false,
-              error: error || `进程退出码: ${code}`,
-              executionTime
-            })
-          }
-        })
-
-        child.on('error', async (err) => {
-          // 进程错误，清理临时文件
-          try {
-            await fs.access(filePath)
-            await fs.unlink(filePath)
-          } catch {}
-          // 忽略清理错误
-          resolve({
-            success: false,
-            error: `进程错误: ${err.message}`,
-            executionTime: Date.now() - startTime
-          })
-        })
-
-        // 发送输入数据
-        if (input) {
-          child.stdin.write(input)
-        }
-        child.stdin.end()
-      })
-    }
-  } catch (error) {
-    // 异常情况下清理临时文件
+  // 执行代码
+  async executeCode(code: string, input: string, language: string, timeLimit: number = 10, memoryLimit: number = 512): Promise<CodeExecutionResult> {
     try {
-      await fs.access(filePath)
-      await fs.unlink(filePath)
-    } catch {}
-    if (executablePath) {
-      try {
-        await fs.access(executablePath)
-        await fs.unlink(executablePath)
-      } catch {}
+      const startTime = Date.now()
+      
+      const response = await fetch(`${this.baseUrl}/api/execute`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          ...(process.env.SELF_HOSTED_JUDGE_API_KEY && {
+            'Authorization': `Bearer ${process.env.SELF_HOSTED_JUDGE_API_KEY}`
+          })
+        },
+        body: JSON.stringify({
+          source_code: code,
+          stdin: input || '',
+          language,
+          cpu_time_limit: timeLimit,
+          memory_limit: memoryLimit
+        }),
+        signal: AbortSignal.timeout(this.timeout)
+      })
+
+      if (!response.ok) {
+        throw new Error(`HTTP ${response.status}: ${response.statusText}`)
+      }
+
+      const result = await response.json()
+      const executionTime = Date.now() - startTime
+
+      console.log('=== 自建服务代码执行结果 ===')
+      console.log('语言:', language)
+      console.log('状态:', result.status)
+      console.log('输出内容:', result.output)
+      console.log('错误信息:', result.error)
+      console.log('执行时间:', result.executionTime || executionTime, 'ms')
+      console.log('内存使用:', result.memoryUsage || 'N/A')
+      console.log('===============================')
+
+      return {
+        success: result.status === 'success',
+        output: result.output || '',
+        error: result.error,
+        executionTime: result.executionTime || executionTime
+      }
+    } catch (error) {
+      console.error('自建服务调用失败:', error)
+      return {
+        success: false,
+        error: `服务调用失败: ${error instanceof Error ? error.message : '未知错误'}`,
+        executionTime: 0
+      }
     }
-    // 忽略清理错误
-    return {
-      success: false,
-      error: `执行失败: ${error instanceof Error ? error.message : String(error)}`
+  }
+
+  // 健康检查
+  async healthCheck(): Promise<boolean> {
+    try {
+      const response = await fetch(`${this.baseUrl}/health`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      })
+      return response.ok
+    } catch {
+      return false
     }
+  }
+
+  // 获取支持的语言列表
+  async getSupportedLanguages(): Promise<string[]> {
+    try {
+      const response = await fetch(`${this.baseUrl}/api/languages`, {
+        method: 'GET',
+        signal: AbortSignal.timeout(5000)
+      })
+      if (response.ok) {
+        const data = await response.json()
+        return data.languages || []
+      }
+    } catch {
+      // 忽略错误
+    }
+    return ['cpp', 'c', 'python', 'java', 'javascript']
   }
 }
 
+// 全局客户端实例
+const judgeClient = new CodeJudgeClient()
+
+// 执行代码的函数
+async function executeCode(code: string, input: string, language: string = 'javascript', timeLimit: number = 10, memoryLimit: number = 512): Promise<CodeExecutionResult> {
+  return await judgeClient.executeCode(code, input, language, timeLimit, memoryLimit)
+}
+
 // 运行测试样例
-async function runTestCases(code: string, testCases: TestCase[], language: string = 'javascript'): Promise<{
+async function runTestCases(code: string, testCases: TestCase[], language: string = 'javascript', timeLimit: number = 10, memoryLimit: number = 512): Promise<{
   totalTests: number
   passedTests: number
   results: Array<{
@@ -276,7 +144,7 @@ async function runTestCases(code: string, testCases: TestCase[], language: strin
     console.log('输入:', JSON.stringify(testCase.input))
     console.log('期望输出:', JSON.stringify(testCase.expectedOutput))
     
-    const result = await executeCode(code, testCase.input, language)
+    const result = await executeCode(code, testCase.input, language, timeLimit, memoryLimit)
 
     if (result.success) {
       const actualOutput = result.output || ''
@@ -456,7 +324,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
             if (testCases.length > 0) {
               // 使用测试用例进行评测
-              const testResult = await runTestCases(studentAnswer, testCases, programmingLanguage)
+              const timeLimit = question.timeLimit || 10
+              const memoryLimit = question.memoryLimit || 512
+              console.log(`时间限制: ${timeLimit}秒，内存限制: ${memoryLimit}MB`)
+              const testResult = await runTestCases(studentAnswer, testCases, programmingLanguage, timeLimit, memoryLimit)
               const passRate = testResult.passedTests / testResult.totalTests
 
               console.log(`测试结果: 通过 ${testResult.passedTests}/${testResult.totalTests} 个测试用例，通过率: ${(passRate * 100).toFixed(1)}%`)

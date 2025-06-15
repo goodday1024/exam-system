@@ -27,6 +27,9 @@ interface Question {
   points: number
   createdAt: string
   testCases?: TestCase[]
+  language?: string
+  timeLimit?: number
+  memoryLimit?: number
 }
 
 interface TestCase {
@@ -58,6 +61,8 @@ export default function QuestionsPage() {
     points: number
     testCases: TestCase[]
     language: string
+    timeLimit: number
+    memoryLimit: number
   }>({
     title: '',
     content: '',
@@ -66,7 +71,9 @@ export default function QuestionsPage() {
     correctAnswer: '',
     points: 10,
     testCases: [{ input: '', expectedOutput: '', description: '' }],
-    language: 'javascript'
+    language: 'javascript',
+    timeLimit: 1,
+    memoryLimit: 512
   })
 
   useEffect(() => {
@@ -107,7 +114,9 @@ export default function QuestionsPage() {
         ...formData,
         options: formData.type === 'MULTIPLE_CHOICE' ? JSON.stringify(formData.options.filter(opt => opt.trim())) : null,
         testCases: formData.type === 'PROGRAMMING' ? JSON.stringify(formData.testCases) : null,
-        language: formData.type === 'PROGRAMMING' ? formData.language : null
+        language: formData.type === 'PROGRAMMING' ? formData.language : null,
+        timeLimit: formData.type === 'PROGRAMMING' ? formData.timeLimit : null,
+        memoryLimit: formData.type === 'PROGRAMMING' ? formData.memoryLimit : null
       }
 
       const url = editingQuestion ? `/api/teacher/questions/${editingQuestion.id}` : '/api/teacher/questions'
@@ -166,7 +175,9 @@ export default function QuestionsPage() {
       correctAnswer: question.correctAnswer,
       points: question.points,
       testCases: question.testCases ? (typeof question.testCases === 'string' ? JSON.parse(question.testCases) : question.testCases) : [{ input: '', expectedOutput: '', description: '' }],
-      language: (question as any).language || 'javascript'
+      language: (question as any).language || 'javascript',
+      timeLimit: (question as any).timeLimit || 1,
+      memoryLimit: (question as any).memoryLimit || 512
     })
     setShowCreateForm(true)
   }
@@ -199,7 +210,9 @@ export default function QuestionsPage() {
       correctAnswer: '',
       points: 10,
       testCases: [{ input: '', expectedOutput: '', description: '' }],
-      language: 'javascript'
+      language: 'javascript',
+      timeLimit: 1,
+      memoryLimit: 512
     })
     setEditingQuestion(null)
     setShowCreateForm(false)
@@ -392,6 +405,32 @@ export default function QuestionsPage() {
                       <option value="javascript">JavaScript</option>
                       <option value="cpp">C++</option>
                     </select>
+                  </div>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">运行时间限制 (秒)</label>
+                      <input
+                        type="number"
+                        min="1"
+                        max="30"
+                        value={formData.timeLimit}
+                        onChange={(e) => setFormData({ ...formData, timeLimit: parseInt(e.target.value) || 1 })}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-black"
+                        placeholder="默认 1 秒"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-sm font-medium text-gray-700">内存限制 (MB)</label>
+                      <input
+                        type="number"
+                        min="64"
+                        max="1024"
+                        value={formData.memoryLimit}
+                        onChange={(e) => setFormData({ ...formData, memoryLimit: parseInt(e.target.value) || 512 })}
+                        className="mt-1 block w-full border-gray-300 rounded-md shadow-sm focus:ring-indigo-500 focus:border-indigo-500 text-black"
+                        placeholder="默认 512 MB"
+                      />
+                    </div>
                   </div>
                   <div>
                     <div className="flex items-center justify-between mb-2">

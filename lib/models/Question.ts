@@ -12,6 +12,8 @@ export interface IQuestion extends Document {
   correctAnswer: string
   testCases?: string // JSON格式存储测试样例，仅编程题使用
   language?: string // 编程语言，仅编程题使用
+  timeLimit?: number // 运行时间限制（秒），仅编程题使用
+  memoryLimit?: number // 内存限制（MB），仅编程题使用
   points: number
   createdAt: Date
   updatedAt: Date
@@ -48,6 +50,16 @@ const QuestionSchema = new Schema<IQuestion>({
     type: String, // 编程语言
     enum: ['javascript', 'cpp', 'c++'],
     default: 'javascript',
+    required: false
+  },
+  timeLimit: {
+    type: Number, // 运行时间限制（秒）
+    default: 1,
+    required: false
+  },
+  memoryLimit: {
+    type: Number, // 内存限制（MB）
+    default: 512,
     required: false
   },
   points: {
