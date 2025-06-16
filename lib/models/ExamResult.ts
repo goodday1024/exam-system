@@ -4,6 +4,7 @@ export interface IExamResult extends Document {
   examId: mongoose.Types.ObjectId | string
   studentId: mongoose.Types.ObjectId | string
   answers: string // JSON格式存储答案
+  codeLanguages?: string // JSON格式存储编程语言选择
   score?: number
   isGraded: boolean
   gradedAt?: Date
@@ -28,6 +29,10 @@ const ExamResultSchema = new Schema<IExamResult>({
   answers: {
     type: String, // JSON格式存储答案
     required: true
+  },
+  codeLanguages: {
+    type: String, // JSON格式存储编程语言选择
+    required: false
   },
   score: {
     type: Number,

@@ -3,3 +3,4 @@ export { default as Question, type IQuestion, type QuestionType } from './Questi
 export { default as Exam, type IExam, type IExamQuestion } from './Exam'
 export { default as ExamResult, type IExamResult } from './ExamResult'
 export { default as Appeal, type IAppeal, type AppealStatus } from './Appeal'
+export { EvaluationTask, type IEvaluationTask } from './EvaluationTask'

@@ -11,6 +11,7 @@ import {
   ExclamationTriangleIcon,
   CheckCircleIcon
 } from '@heroicons/react/24/outline'
+import StudentCodeEditor from '@/components/StudentCodeEditor'
 
 interface Question {
   id: string
@@ -20,6 +21,7 @@ interface Question {
   options: string | null
   points: number
   order: number
+  testCases?: any[] // 编程题的测试用例
 }
 
 interface Exam {
@@ -54,6 +56,7 @@ export default function ExamPage() {
   const [exam, setExam] = useState<Exam | null>(null)
   const [examResult, setExamResult] = useState<ExamResult | null>(null)
   const [answers, setAnswers] = useState<Record<string, string>>({})
+  const [codeLanguages, setCodeLanguages] = useState<Record<string, string>>({})
   const [timeLeft, setTimeLeft] = useState(0)
   const [tabSwitches, setTabSwitches] = useState(0)
   const [showWarning, setShowWarning] = useState(false)
@@ -247,7 +250,10 @@ export default function ExamPage() {
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ answers: answersToSave }),
+        body: JSON.stringify({ 
+          answers: answersToSave,
+          codeLanguages 
+        }),
       })
       
       const result = await response.json()
@@ -282,12 +288,18 @@ export default function ExamPage() {
     setSubmitting(true)
     
     try {
+      // 准备提交数据，包含答案和编程语言信息
+      const submissionData = {
+        answers,
+        codeLanguages
+      }
+      
       const response = await fetch(`/api/student/exam/${examId}/submit`, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
         },
-        body: JSON.stringify({ answers }),
+        body: JSON.stringify(submissionData),
       })
       
       if (response.ok) {
@@ -602,11 +614,15 @@ export default function ExamPage() {
                 )}
                 
                 {question.type === 'PROGRAMMING' && (
-                  <textarea
+                  <StudentCodeEditor
+                    questionId={question.id}
+                    examId={exam!.id}
                     value={answers[question.id] || ''}
-                    onChange={(e) => handleAnswerChange(question.id, e.target.value)}
-                    className="w-full h-40 p-3 border border-gray-300 rounded-md focus:ring-indigo-500 focus:border-indigo-500 font-mono text-sm text-black"
-                    placeholder="请在此处输入您的代码..."
+                    onChange={(value) => handleAnswerChange(question.id, value)}
+                    language={codeLanguages[question.id] || 'javascript'}
+                    onLanguageChange={(lang) => setCodeLanguages(prev => ({ ...prev, [question.id]: lang }))}
+                    testCases={question.testCases || []}
+                    disabled={submitting}
                   />
                 )}
               </div>

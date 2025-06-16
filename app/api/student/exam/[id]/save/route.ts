@@ -29,13 +29,20 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     // 支持两种格式：单个答案保存和批量答案保存
     let answersToUpdate: Record<string, string> = {}
+    let languagesToUpdate: Record<string, string> = {}
     
     if (body.questionId && body.answer !== undefined) {
       // 单个答案保存格式
       answersToUpdate[body.questionId] = body.answer
+      if (body.language) {
+        languagesToUpdate[body.questionId] = body.language
+      }
     } else if (body.answers && typeof body.answers === 'object') {
       // 批量答案保存格式
       answersToUpdate = body.answers
+      if (body.codeLanguages && typeof body.codeLanguages === 'object') {
+        languagesToUpdate = body.codeLanguages
+      }
     } else {
       return NextResponse.json(
         { error: '缺少必要参数' },
@@ -86,16 +93,29 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
 
     // 更新答案
     const currentAnswers = examResult.answers ? JSON.parse(examResult.answers) : {}
+    const currentLanguages = examResult.codeLanguages ? JSON.parse(examResult.codeLanguages) : {}
     
     // 批量更新答案
     Object.keys(answersToUpdate).forEach(questionId => {
       currentAnswers[questionId] = answersToUpdate[questionId]
     })
+    
+    // 批量更新编程语言
+    Object.keys(languagesToUpdate).forEach(questionId => {
+      currentLanguages[questionId] = languagesToUpdate[questionId]
+    })
 
-    await ExamResult.findByIdAndUpdate(examResult._id, {
+    const updateData: any = {
       answers: JSON.stringify(currentAnswers),
       updatedAt: new Date()
-    })
+    }
+    
+    // 只有当有语言信息时才更新
+    if (Object.keys(languagesToUpdate).length > 0) {
+      updateData.codeLanguages = JSON.stringify(currentLanguages)
+    }
+
+    await ExamResult.findByIdAndUpdate(examResult._id, updateData)
 
     return NextResponse.json({
       message: '答案保存成功'

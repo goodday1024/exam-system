@@ -107,20 +107,7 @@ export default function TeacherDashboard() {
     }
   }
 
-  const handleCodeEvaluation = async (examId: string) => {
-    try {
-      const response = await fetch(`/api/teacher/exams/${examId}/evaluate`, {
-        method: 'POST'
-      })
-      if (response.ok) {
-        toast.success('代码评测已开始')
-      } else {
-        toast.error('代码评测失败')
-      }
-    } catch (error) {
-      toast.error('代码评测失败')
-    }
-  }
+
 
   if (loading) {
     return (
@@ -314,15 +301,7 @@ export default function TeacherDashboard() {
                             >
                               自动判分
                             </button>
-                            <button
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleCodeEvaluation(exam._id);
-                              }}
-                              className="text-sm bg-purple-500 text-white px-3 py-1 rounded hover:bg-purple-600"
-                            >
-                              代码评测
-                            </button>
+
                             {exam._count.examResults > 0 && exam._count.ungradedResults === 0 && (
                               <span className="text-xs text-green-600">全部已判分</span>
                             )}

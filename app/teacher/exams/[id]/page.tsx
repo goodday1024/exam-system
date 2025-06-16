@@ -9,6 +9,7 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import ReactMarkdown from 'react-markdown'
 import { createRoot } from 'react-dom/client'
+import TeacherEdgeEvaluation from '@/components/TeacherEdgeEvaluation'
 
 interface Question {
   _id: string
@@ -584,6 +585,24 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
             </div>
           )}
         </div>
+
+        {/* 边缘函数代码评测 */}
+        {exam.questions.some(q => q.type === 'PROGRAMMING') && (
+          <div className="mb-8">
+            <TeacherEdgeEvaluation 
+              examId={exam._id}
+              onComplete={(results) => {
+                console.log('批量评测完成:', results)
+                toast.success(`代码评测已完成，共评测 ${results.length} 个学生提交`)
+                // 可以在这里刷新页面或更新状态
+              }}
+              onError={(error) => {
+                console.error('评测失败:', error)
+                toast.error(`代码评测失败: ${error}`)
+              }}
+            />
+          </div>
+        )}
 
         {/* 危险操作 */}
         <div className="bg-white rounded-lg shadow-md p-6">

@@ -25,7 +25,7 @@ class CodeJudgeClient {
 
   constructor() {
     this.baseUrl = process.env.SELF_HOSTED_JUDGE_URL || 'http://localhost:3001'
-    this.timeout = 1200000 // 120秒超时
+    this.timeout = 50000 // 50秒超时，符合Vercel限制
   }
 
   // 执行代码
@@ -256,7 +256,10 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       
       // 解析学生答案JSON字符串
       const studentAnswers = examResult.answers ? JSON.parse(examResult.answers) : {}
+      // 解析学生选择的编程语言
+      const codeLanguages = examResult.codeLanguages ? JSON.parse(examResult.codeLanguages) : {}
       console.log('学生答案结构:', studentAnswers)
+      console.log('学生语言选择:', codeLanguages)
       
       let totalScore = 0
       const questionResults = []
@@ -309,8 +312,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
           // 处理编程题
           try {
             const testCases = question.testCases ? JSON.parse(question.testCases) : []
-            // 获取编程语言，默认为 javascript，支持 cpp
-            const programmingLanguage = question.language || 'javascript'
+            // 获取学生选择的编程语言，如果没有则使用默认语言
+            const programmingLanguage = codeLanguages[questionId] || 'cpp'
 
             console.log(`\n=== 开始评测编程题 ===`)
             console.log(`题目: ${question.title}`)

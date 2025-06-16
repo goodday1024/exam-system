@@ -25,7 +25,7 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
     }
 
     const examId = params.id
-    const { tabSwitches } = await request.json()
+    const { answers, codeLanguages, tabSwitches } = await request.json()
 
     // 获取考试信息
     const exam = await Exam.findById(examId)
@@ -57,13 +57,26 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
       )
     }
 
-    // 提交考试
-    await ExamResult.findByIdAndUpdate(examResult._id, {
+    // 更新答案（如果提供了新答案）
+    const updateData: any = {
       isSubmitted: true,
       submittedAt: new Date(),
       tabSwitches: tabSwitches || examResult.tabSwitches,
       updatedAt: new Date()
-    })
+    }
+    
+    // 如果提供了答案，更新答案
+    if (answers) {
+      updateData.answers = JSON.stringify(answers)
+    }
+    
+    // 如果提供了编程语言选择，更新语言选择
+    if (codeLanguages) {
+      updateData.codeLanguages = JSON.stringify(codeLanguages)
+    }
+    
+    // 提交考试
+    await ExamResult.findByIdAndUpdate(examResult._id, updateData)
 
     return NextResponse.json({
       message: '考试提交成功'
