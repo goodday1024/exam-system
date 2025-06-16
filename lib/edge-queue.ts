@@ -148,7 +148,7 @@ class EdgeQueue {
           language: job.language,
           stdin: Array.isArray(job.testCases) ? job.testCases.map(testCase => testCase.input).join('\n') : '',
           expected_output: Array.isArray(job.testCases) ? job.testCases.map(testCase => testCase.output).join('\n') : '',
-          cpu_time_limit: 5, // 代码执行超时5秒
+          cpu_time_limit: 4, // 代码执行超时5秒
           memory_limit: 512, // 内存限制512MB
         }),
         signal: controller.signal
