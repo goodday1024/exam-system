@@ -197,7 +197,7 @@ export async function POST(request: NextRequest) {
               timestamp: Date.now()
             })
             controller.close()
-          }, 5 * 60 * 1000) // 5分钟超时
+          }, 10 * 60 * 1000) // 5分钟超时
 
         } catch (error) {
           sendEvent('error', {
