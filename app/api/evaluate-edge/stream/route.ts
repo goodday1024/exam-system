@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { edgeQueue } from '@/lib/edge-queue'
-import { verifyToken } from '@/lib/jwt'
+import { verifyTokenEdge } from '@/lib/jwt-edge'
 
 // 启用边缘运行时
 export const runtime = 'edge'
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const decoded = verifyToken(token)
+    const decoded = await verifyTokenEdge(token)
     if (!decoded) {
       return new Response(
         JSON.stringify({ error: '无效token' }),
