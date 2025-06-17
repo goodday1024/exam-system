@@ -123,7 +123,7 @@ async function executeCode(code: string, input: string, language: string = 'java
 }
 
 // 运行测试样例
-async function runTestCases(code: string, testCases: TestCase[], language: string = 'javascript', timeLimit: number = 10, memoryLimit: number = 512): Promise<{
+async function runTestCases(code: string, testCases: TestCase[], language: string = 'javascript', timeLimit: number = 10, memoryLimit: number = 512, questionTimeLimit?: number): Promise<{
   totalTests: number
   passedTests: number
   results: Array<{
@@ -131,6 +131,9 @@ async function runTestCases(code: string, testCases: TestCase[], language: strin
     passed: boolean
     actualOutput?: string
     error?: string
+    executionTime?: number
+    timeLimitExceeded?: boolean
+    status?: string
   }>
 }> {
   const results = []
@@ -147,14 +150,29 @@ async function runTestCases(code: string, testCases: TestCase[], language: strin
     const result = await executeCode(code, testCase.input, language, timeLimit, memoryLimit)
 
     if (result.success) {
-      const actualOutput = result.output || ''
+      const actualOutput = (result.output || '').trim()
       const expectedOutput = testCase.expectedOutput.trim()
-      const passed = actualOutput === expectedOutput
+      const outputMatches = actualOutput === expectedOutput
+      
+      // 检查时间限制
+      let timeLimitExceeded = false
+      if (questionTimeLimit && result.executionTime) {
+        // 将执行时间转换为秒（如果是毫秒）
+        const executionTimeInSeconds = result.executionTime > 100 ? result.executionTime / 1000 : result.executionTime
+        timeLimitExceeded = executionTimeInSeconds > questionTimeLimit
+      }
+      
+      const passed = outputMatches && !timeLimitExceeded
       
       console.log('实际输出:', JSON.stringify(actualOutput))
+      console.log('执行时间:', result.executionTime, 'ms')
+      if (questionTimeLimit) {
+        console.log('时间限制:', questionTimeLimit, 's')
+        console.log('时间检查:', timeLimitExceeded ? '❌ 超时' : '✅ 正常')
+      }
       console.log('测试结果:', passed ? '✅ 通过' : '❌ 失败')
       
-      if (!passed) {
+      if (!outputMatches) {
         console.log('输出对比:')
         console.log('  期望:', expectedOutput)
         console.log('  实际:', actualOutput)
@@ -168,7 +186,10 @@ async function runTestCases(code: string, testCases: TestCase[], language: strin
       results.push({
         testCase,
         passed,
-        actualOutput
+        actualOutput,
+        executionTime: result.executionTime,
+        timeLimitExceeded,
+        status: timeLimitExceeded ? 'Time Limit Exceeded' : (outputMatches ? 'Accepted' : 'Wrong Answer')
       })
     } else {
       console.log('执行失败:', result.error)
@@ -177,7 +198,8 @@ async function runTestCases(code: string, testCases: TestCase[], language: strin
       results.push({
         testCase,
         passed: false,
-        error: result.error
+        error: result.error,
+        status: 'Runtime Error'
       })
     }
   }
@@ -330,7 +352,8 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
               const timeLimit = question.timeLimit || 10
               const memoryLimit = question.memoryLimit || 512
               console.log(`时间限制: ${timeLimit}秒，内存限制: ${memoryLimit}MB`)
-              const testResult = await runTestCases(studentAnswer, testCases, programmingLanguage, timeLimit, memoryLimit)
+              const questionTimeLimit = question.timeLimit || 1 // 题目时间限制，默认1秒
+              const testResult = await runTestCases(studentAnswer, testCases, programmingLanguage, timeLimit, memoryLimit, questionTimeLimit)
               const passRate = testResult.passedTests / testResult.totalTests
 
               console.log(`测试结果: 通过 ${testResult.passedTests}/${testResult.totalTests} 个测试用例，通过率: ${(passRate * 100).toFixed(1)}%`)

@@ -332,8 +332,9 @@ class EvaluationQueue {
         }
       }
 
-      // 运行测试用例
-      const testResult = await this.runTestCases(code, testCases, language)
+      // 运行测试用例，传递题目的时间限制
+      const timeLimit = question.timeLimit || 1 // 默认1秒
+      const testResult = await this.runTestCases(code, testCases, language, timeLimit)
       
       // 计算分数
       const score = testResult.totalTests > 0 
@@ -408,18 +409,28 @@ class EvaluationQueue {
   }
 
   // 运行测试用例
-  private async runTestCases(code: string, testCases: any[], language: string) {
+  private async runTestCases(code: string, testCases: any[], language: string, timeLimit?: number) {
     const results = []
     let passedTests = 0
 
     for (let i = 0; i < testCases.length; i++) {
       const testCase = testCases[i]
-      const result = await this.executeCode(code, testCase.input, language)
+      const result = await this.executeCode(code, testCase.input, language, timeLimit)
 
       if (result.success) {
         const actualOutput = (result.output || '').trim()
         const expectedOutput = testCase.expectedOutput.trim()
-        const passed = actualOutput === expectedOutput
+        const outputMatches = actualOutput === expectedOutput
+        
+        // 检查时间限制
+        let timeLimitExceeded = false
+        if (timeLimit && result.executionTime) {
+          // 将执行时间转换为秒（如果是毫秒）
+          const executionTimeInSeconds = result.executionTime > 100 ? result.executionTime / 1000 : result.executionTime
+          timeLimitExceeded = executionTimeInSeconds > timeLimit
+        }
+        
+        const passed = outputMatches && !timeLimitExceeded
         
         if (passed) {
           passedTests++
@@ -428,13 +439,17 @@ class EvaluationQueue {
         results.push({
           testCase,
           passed,
-          actualOutput
+          actualOutput,
+          executionTime: result.executionTime,
+          timeLimitExceeded,
+          status: timeLimitExceeded ? 'Time Limit Exceeded' : (outputMatches ? 'Accepted' : 'Wrong Answer')
         })
       } else {
         results.push({
           testCase,
           passed: false,
-          error: result.error
+          error: result.error,
+          status: 'Runtime Error'
         })
       }
     }

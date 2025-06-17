@@ -1,6 +1,6 @@
 import { NextRequest } from 'next/server'
 import { edgeQueue } from '@/lib/edge-queue'
-import { verifyTokenEdge } from '@/lib/jwt-edge'
+import { verifyToken } from '@/lib/jwt'
 
 // 启用边缘运行时
 export const runtime = 'edge'
@@ -20,7 +20,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    const decoded = await verifyTokenEdge(token)
+    const decoded = verifyToken(token)
     if (!decoded) {
       return new Response(
         JSON.stringify({ error: '无效token' }),
@@ -32,10 +32,7 @@ export async function POST(request: NextRequest) {
     }
 
     const body = await request.json()
-    const { examId, studentId, code, testCases, priority = false } = body 
-
-    //language需要使用三目运算符判断是否为c++，如果是则转换为cpp
-    const language = body.language === 'c++' ? 'cpp' : body.language
+    const { examId, studentId, code, language, testCases, priority = false } = body
 
     // 验证必要参数
     if (!examId || !code || !language || !testCases) {
@@ -60,7 +57,7 @@ export async function POST(request: NextRequest) {
     }
 
     // 验证测试用例数量
-    if (!Array.isArray(JSON.parse(testCases)) || JSON.parse(testCases).length === 0) {
+    if (!Array.isArray(testCases) || testCases.length === 0) {
       return new Response(
         JSON.stringify({ error: '测试用例不能为空' }),
         { 
@@ -70,7 +67,7 @@ export async function POST(request: NextRequest) {
       )
     }
 
-    if (JSON.parse(testCases).length > 20) {
+    if (testCases.length > 20) {
       return new Response(
         JSON.stringify({ error: '测试用例数量超过限制（最大20个）' }),
         { 
@@ -197,7 +194,7 @@ export async function POST(request: NextRequest) {
               timestamp: Date.now()
             })
             controller.close()
-          }, 10 * 60 * 1000) // 5分钟超时
+          }, 5 * 60 * 1000) // 5分钟超时
 
         } catch (error) {
           sendEvent('error', {
