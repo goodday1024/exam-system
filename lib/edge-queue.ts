@@ -134,10 +134,10 @@ class EdgeQueue {
   // 执行代码评测
   private async executeEvaluation(job: EvaluationJob): Promise<any> {
     const controller = new AbortController()
-    const timeoutId = setTimeout(() => controller.abort(), 8000) // 8秒超时
+    const timeoutId = setTimeout(() => controller.abort(), 30000) // 30秒超时，适应Vercel免费版和2核2G服务器性能
     
     try {
-      const response = await fetch(process.env.SELF_HOSTED_JUDGE_URL || 'http://localhost:3001/api/execute', {
+      const response = await fetch(process.env.SELF_HOSTED_JUDGE_URL || 'http://localhost:3002/api/execute', {
         method: 'POST',
         headers: { 
           'Content-Type': 'application/json',
@@ -148,7 +148,7 @@ class EdgeQueue {
           language: job.language,
           stdin: Array.isArray(job.testCases) ? job.testCases.map(testCase => testCase.input).join('\n') : '',
           expected_output: Array.isArray(job.testCases) ? job.testCases.map(testCase => testCase.output).join('\n') : '',
-          cpu_time_limit: 4, // 代码执行超时5秒
+          cpu_time_limit: 10, // 代码执行超时10秒，适应低性能服务器
           memory_limit: 512, // 内存限制512MB
         }),
         signal: controller.signal
