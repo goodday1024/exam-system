@@ -318,7 +318,7 @@ class EvaluationQueue {
   // 评测单个提交
   private async evaluateSubmission(submission: any, question: any) {
     try {
-      const code = submission.answer
+      const code = submission.code
       const language = submission.language || 'javascript'
       const testCases = question.testCases || []
       
