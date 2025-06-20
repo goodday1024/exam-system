@@ -9,7 +9,7 @@ import jsPDF from 'jspdf'
 import html2canvas from 'html2canvas'
 import ReactMarkdown from 'react-markdown'
 import { createRoot } from 'react-dom/client'
-import TeacherEdgeEvaluation from '@/components/TeacherEdgeEvaluation'
+
 
 interface Question {
   _id: string
@@ -586,21 +586,16 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
           )}
         </div>
 
-        {/* 边缘函数代码评测 */}
+        {/* 编程题提示 */}
         {exam.questions.some(q => q.type === 'PROGRAMMING') && (
           <div className="mb-8">
-            <TeacherEdgeEvaluation 
-              examId={exam._id}
-              onComplete={(results) => {
-                console.log('批量评测完成:', results)
-                toast.success(`代码评测已完成，共评测 ${results.length} 个学生提交`)
-                // 可以在这里刷新页面或更新状态
-              }}
-              onError={(error) => {
-                console.error('评测失败:', error)
-                toast.error(`代码评测失败: ${error}`)
-              }}
-            />
+            <div className="bg-blue-50 border border-blue-200 rounded-lg p-4">
+              <h3 className="text-lg font-medium text-blue-800 mb-2">编程题评测</h3>
+              <p className="text-blue-700">
+                本考试包含编程题，学生提交的代码将需要使用本地测评程序进行评测。
+                请使用专门的本地测评工具来批量评测学生的编程题答案。
+              </p>
+            </div>
           </div>
         )}
 

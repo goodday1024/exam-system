@@ -61,5 +61,3 @@ temp/
 # Optional eslint cache
 .eslintcache
 
-# Code Judge Service
-code-judge-service/

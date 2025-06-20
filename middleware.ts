@@ -33,9 +33,7 @@ export const config = {
      * - api/proxy-image (image proxy routes)
      * - api/student (student routes)
      * - api/teacher (teacher routes)
-     * - api/evaluate-edge (new edge evaluation routes)
-     * - test-edge-evaluation (test page)
      */
-    '/((?!_next/static|_next/image|favicon.ico|api/auth|api/proxy-image|api/student|api/teacher|api/evaluate-edge|test-edge-evaluation).*)',
+    '/((?!_next/static|_next/image|favicon.ico|api/auth|api/proxy-image|api/student|api/teacher).*)',
   ],
 };

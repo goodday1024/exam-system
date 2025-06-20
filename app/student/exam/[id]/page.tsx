@@ -305,18 +305,7 @@ export default function ExamPage() {
       if (response.ok) {
         toast.success('考试提交成功')
         
-        // 检查是否有编程题，如果有则触发代码评测
-        const hasProgrammingQuestions = exam!.questions.some(q => q.type === 'PROGRAMMING')
-        if (hasProgrammingQuestions) {
-          try {
-            await fetch(`/api/teacher/exams/${examId}/evaluate`, {
-              method: 'POST'
-            })
-            toast.success('代码评测已自动开始')
-          } catch (error) {
-            console.log('代码评测触发失败，但不影响考试提交')
-          }
-        }
+
         
         router.push('/student')
       } else {

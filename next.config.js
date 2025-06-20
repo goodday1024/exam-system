@@ -23,32 +23,7 @@ const nextConfig = {
     }
     return config
   },
-  // 边缘函数配置
-  async headers() {
-    return [
-      {
-        source: '/api/evaluate-edge/:path*',
-        headers: [
-          {
-            key: 'Cache-Control',
-            value: 'no-cache, no-store, must-revalidate'
-          },
-          {
-            key: 'Access-Control-Allow-Origin',
-            value: '*'
-          },
-          {
-            key: 'Access-Control-Allow-Methods',
-            value: 'GET, POST, DELETE, OPTIONS'
-          },
-          {
-            key: 'Access-Control-Allow-Headers',
-            value: 'Content-Type, Authorization'
-          }
-        ]
-      }
-    ]
-  }
+
 }
 
 module.exports = nextConfig
