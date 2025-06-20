@@ -446,11 +446,13 @@ class LocalJudgeApp:
             
             # 初始化测试用例变量
             test_cases = []
+            test_score = 0
             
             # 遍历所有题目找到匹配的编程题
             for question in response.json().get('questions', []):
                 if question.get('type') == 'PROGRAMMING' and question.get('_id') == question_id:
                     test_cases_raw = question.get('testCases', [])
+                    test_score = question.get('points', 0)
                     
                     # 处理测试用例数据
                     if isinstance(test_cases_raw, str):
@@ -496,38 +498,12 @@ class LocalJudgeApp:
             
             # 计算执行时间和得分
             execution_time = time.time() - start_time
-            score = (passed_cases / total_cases) * 100 if total_cases > 0 else 0
+            score = (passed_cases / total_cases) * test_score if total_cases > 0 else 0
             
             # 确定状态
             status = "通过" if passed_cases == total_cases else f"部分通过({passed_cases}/{total_cases})"
             if passed_cases == 0:
                 status = "失败"
-            
-            # 同步分数到服务器
-            try:
-                exam_id = self.current_exam['_id']
-                sync_url = f"{self.server_url.get()}/api/teacher/exams/{exam_id}/sync-score"
-                sync_data = {
-                    'questionId': question_id,
-                    'score': round(score, 1),
-                    'status': status,
-                    'executionTime': round(execution_time * 1000, 2),
-                    'errorMessage': '; '.join(error_messages[:3]) if error_messages else ''
-                }
-                
-                sync_response = requests.post(
-                    sync_url,
-                    json=sync_data,
-                    headers=headers,
-                    cookies=cookies,
-                    timeout=30
-                )
-                
-                if sync_response.status_code != 200:
-                    print(f"警告：同步分数失败 - HTTP {sync_response.status_code}")
-                    
-            except Exception as e:
-                print(f"警告：同步分数时出错 - {str(e)}")
             
             return {
                 'status': status,
@@ -678,17 +654,12 @@ class LocalJudgeApp:
                 import csv
                 with open(filename, 'w', newline='', encoding='utf-8') as f:
                     writer = csv.writer(f)
-                    writer.writerow(['学生', '题目', '语言', '状态', '得分', '执行时间(ms)', '错误信息'])
+                    writer.writerow(['学生', '得分'])
                     
                     for result in self.student_results:
                         writer.writerow([
                             result['student'],
-                            result['question'],
-                            result['language'],
-                            result['status'],
-                            f"{result['score']}%",
-                            result['execution_time'],
-                            result['error']
+                            f"{result['score']}"
                         ])
                         
                 messagebox.showinfo("导出成功", f"结果已导出到: {filename}")

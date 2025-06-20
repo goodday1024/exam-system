@@ -92,7 +92,11 @@ export async function POST(request: NextRequest, { params }: { params: { id: str
         score: finalScore,
         isGraded: true,
         gradedAt: new Date(),
-        updatedAt: new Date()
+        updatedAt: new Date(),
+        // 重置编程成绩导入状态，允许重新导入
+        programmingScoreImported: false,
+        programmingScoreImportedAt: null,
+        programmingScore: null
       })
     })
 

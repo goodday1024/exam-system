@@ -6,11 +6,14 @@ export interface IExamResult extends Document {
   answers: string // JSON格式存储答案
   codeLanguages?: string // JSON格式存储编程语言选择
   score?: number
+  programmingScore?: number // 编程题分数
   isGraded: boolean
   gradedAt?: Date
   tabSwitches: number
   isSubmitted: boolean
   submittedAt?: Date
+  programmingScoreImported?: boolean // 编程成绩是否已导入
+  programmingScoreImportedAt?: Date // 编程成绩导入时间
   createdAt: Date
   updatedAt: Date
 }
@@ -38,6 +41,10 @@ const ExamResultSchema = new Schema<IExamResult>({
     type: Number,
     required: false
   },
+  programmingScore: {
+    type: Number,
+    required: false
+  },
   isGraded: {
     type: Boolean,
     default: false
@@ -55,6 +62,14 @@ const ExamResultSchema = new Schema<IExamResult>({
     default: false
   },
   submittedAt: {
+    type: Date,
+    required: false
+  },
+  programmingScoreImported: {
+    type: Boolean,
+    default: false
+  },
+  programmingScoreImportedAt: {
     type: Date,
     required: false
   }
