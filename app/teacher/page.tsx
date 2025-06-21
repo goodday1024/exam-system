@@ -9,7 +9,8 @@ import {
   AcademicCapIcon,
   ChartBarIcon,
   UsersIcon,
-  ArrowRightOnRectangleIcon
+  ArrowRightOnRectangleIcon,
+  ShoppingBagIcon
 } from '@heroicons/react/24/outline'
 
 interface User {
@@ -142,7 +143,7 @@ export default function TeacherDashboard() {
 
       <div className="max-w-7xl mx-auto py-6 sm:px-6 lg:px-8">
         {/* 快捷操作卡片 */}
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-6 mb-8">
+        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-5 gap-6 mb-8">
           <div
             onClick={() => router.push('/teacher/questions')}
             className="bg-white overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-md transition-shadow"
@@ -213,6 +214,25 @@ export default function TeacherDashboard() {
                   <dl>
                     <dt className="text-sm font-medium text-gray-500 truncate">数据分析</dt>
                     <dd className="text-lg font-medium text-gray-900">统计报告</dd>
+                  </dl>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div
+            onClick={() => router.push('/marketplace')}
+            className="bg-white overflow-hidden shadow rounded-lg cursor-pointer hover:shadow-md transition-shadow"
+          >
+            <div className="p-5">
+              <div className="flex items-center">
+                <div className="flex-shrink-0">
+                  <ShoppingBagIcon className="h-6 w-6 text-indigo-600" />
+                </div>
+                <div className="ml-5 w-0 flex-1">
+                  <dl>
+                    <dt className="text-sm font-medium text-gray-500 truncate">考试商城</dt>
+                    <dd className="text-lg font-medium text-gray-900">导入考试</dd>
                   </dl>
                 </div>
               </div>

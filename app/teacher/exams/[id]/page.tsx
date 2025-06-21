@@ -39,6 +39,8 @@ interface Exam {
 export default function ExamDetailPage({ params }: { params: { id: string } }) {
   const [exam, setExam] = useState<Exam | null>(null)
   const [loading, setLoading] = useState(true)
+  const [publishingToMarketplace, setPublishingToMarketplace] = useState(false)
+  const [showMarketplaceModal, setShowMarketplaceModal] = useState(false)
   const router = useRouter()
 
   useEffect(() => {
@@ -411,6 +413,32 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
     }
   }
 
+  const handlePublishToMarketplace = async (marketplaceData: any) => {
+    try {
+      setPublishingToMarketplace(true)
+      const response = await fetch(`/api/teacher/exams/${params.id}/publish-to-marketplace`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json'
+        },
+        body: JSON.stringify(marketplaceData)
+      })
+      
+      const data = await response.json()
+      
+      if (response.ok) {
+        toast.success('考试已成功发布到商城！')
+        setShowMarketplaceModal(false)
+      } else {
+        toast.error(data.error || '发布失败')
+      }
+    } catch (error) {
+      toast.error('网络错误')
+    } finally {
+      setPublishingToMarketplace(false)
+    }
+  }
+
   const getExamStatus = () => {
     if (!exam) return { text: '', color: '' }
     
@@ -474,6 +502,12 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
               className="bg-purple-600 text-white px-6 py-2 rounded-lg hover:bg-purple-700 transition-colors"
             >
               导出PDF
+            </button>
+            <button
+              onClick={() => setShowMarketplaceModal(true)}
+              className="bg-indigo-600 text-white px-6 py-2 rounded-lg hover:bg-indigo-700 transition-colors"
+            >
+              发布到商城
             </button>
             {!exam.isPublished && (
               <Link
@@ -615,6 +649,133 @@ export default function ExamDetailPage({ params }: { params: { id: string } }) {
             </button>
           </div>
         </div>
+      </div>
+
+      {/* 发布到商城模态框 */}
+      {showMarketplaceModal && (
+        <MarketplaceModal
+          exam={exam}
+          onClose={() => setShowMarketplaceModal(false)}
+          onSubmit={handlePublishToMarketplace}
+          loading={publishingToMarketplace}
+        />
+      )}
+    </div>
+  )
+}
+
+// 发布到商城模态框组件
+function MarketplaceModal({ 
+  exam, 
+  onClose, 
+  onSubmit, 
+  loading 
+}: { 
+  exam: Exam
+  onClose: () => void
+  onSubmit: (data: any) => void
+  loading: boolean
+}) {
+  const [formData, setFormData] = useState({
+    category: '编程',
+    difficulty: 'MEDIUM',
+    tags: '',
+    description: exam.description || ''
+  })
+
+  const handleSubmit = (e: React.FormEvent) => {
+    e.preventDefault()
+    const tags = formData.tags.split(',').map(tag => tag.trim()).filter(tag => tag)
+    onSubmit({
+      ...formData,
+      tags
+    })
+  }
+
+  return (
+    <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center z-50">
+      <div className="bg-white rounded-lg p-6 w-full max-w-md mx-4">
+        <h3 className="text-lg font-semibold mb-4">发布考试到商城</h3>
+        
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              分类
+            </label>
+            <select
+              value={formData.category}
+              onChange={(e) => setFormData({ ...formData, category: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="数学">数学</option>
+              <option value="编程">编程</option>
+              <option value="语言">语言</option>
+              <option value="科学">科学</option>
+              <option value="其他">其他</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              难度
+            </label>
+            <select
+              value={formData.difficulty}
+              onChange={(e) => setFormData({ ...formData, difficulty: e.target.value })}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              required
+            >
+              <option value="EASY">简单</option>
+              <option value="MEDIUM">中等</option>
+              <option value="HARD">困难</option>
+            </select>
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              标签 (用逗号分隔)
+            </label>
+            <input
+              type="text"
+              value={formData.tags}
+              onChange={(e) => setFormData({ ...formData, tags: e.target.value })}
+              placeholder="例如: JavaScript, 算法, 基础"
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+            />
+          </div>
+          
+          <div>
+            <label className="block text-sm font-medium text-gray-700 mb-1">
+              描述
+            </label>
+            <textarea
+              value={formData.description}
+              onChange={(e) => setFormData({ ...formData, description: e.target.value })}
+              rows={3}
+              className="w-full px-3 py-2 border border-gray-300 rounded-md focus:outline-none focus:ring-2 focus:ring-blue-500"
+              placeholder="请输入考试描述..."
+            />
+          </div>
+          
+          <div className="flex space-x-3 pt-4">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 px-4 py-2 border border-gray-300 text-gray-700 rounded-md hover:bg-gray-50 transition-colors"
+              disabled={loading}
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 bg-blue-600 text-white px-4 py-2 rounded-md hover:bg-blue-700 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+            >
+              {loading ? '发布中...' : '发布'}
+            </button>
+          </div>
+        </form>
       </div>
     </div>
   )

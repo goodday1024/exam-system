@@ -70,7 +70,7 @@ export default function LoginPage() {
       <div className="max-w-md w-full space-y-8">
         <div>
           <h2 className="mt-6 text-center text-3xl font-extrabold text-gray-900">
-            编程考试系统
+            考试系统
           </h2>
           <p className="mt-2 text-center text-sm text-gray-600">
             {isLogin ? '登录到您的账户' : '创建新账户'}
