@@ -104,7 +104,14 @@ export async function GET(request: NextRequest) {
       }
     ])
 
-    return NextResponse.json({ exams })
+    const response = NextResponse.json({ exams })
+    
+    // 添加缓存头以配合Cloudflare缓存
+    response.headers.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=360')
+    response.headers.set('CDN-Cache-Control', 'public, max-age=180')
+    response.headers.set('Vary', 'Accept-Encoding')
+    
+    return response
   } catch (error) {
     console.error('Get exams error:', error)
     return NextResponse.json(

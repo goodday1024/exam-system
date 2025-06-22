@@ -27,7 +27,14 @@ export async function GET(request: NextRequest) {
       _id: question._id.toString()
     }))
 
-    return NextResponse.json({ questions: serializedQuestions })
+    const response = NextResponse.json({ questions: serializedQuestions })
+    
+    // 添加缓存头以配合Cloudflare缓存
+    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
+    response.headers.set('CDN-Cache-Control', 'public, max-age=300')
+    response.headers.set('Vary', 'Accept-Encoding')
+    
+    return response
   } catch (error) {
     console.error('获取题目失败:', error)
     return NextResponse.json({ error: '服务器错误' }, { status: 500 })

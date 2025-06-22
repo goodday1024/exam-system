@@ -2,23 +2,30 @@ import { NextResponse } from 'next/server';
 import type { NextRequest } from 'next/server';
 
 export async function middleware(request: NextRequest) {
-  // Example: Redirect based on a header or cookie
-  // const isAuthenticated = request.cookies.get('auth')?.value;
-  // if (!isAuthenticated) {
-  //   return NextResponse.redirect(new URL('/login', request.url));
-  // }
-
-  // Example: Modify request headers
-  // const requestHeaders = new Headers(request.headers);
-  // requestHeaders.set('x-custom-header', 'my-value');
-
-  // Example: Rewrite the URL
-  // if (request.nextUrl.pathname === '/old-path') {
-  //   return NextResponse.rewrite(new URL('/new-path', request.url));
-  // }
-
-  // Continue to the next middleware or the requested route
-  return NextResponse.next();
+  const response = NextResponse.next();
+  
+  // 为静态资源添加缓存头
+  if (request.nextUrl.pathname.startsWith('/_next/static/') || 
+      request.nextUrl.pathname.includes('.')) {
+    response.headers.set('Cache-Control', 'public, max-age=31536000, immutable');
+  }
+  
+  // 为API路由添加通用安全头
+  if (request.nextUrl.pathname.startsWith('/api/')) {
+    response.headers.set('X-Content-Type-Options', 'nosniff');
+    response.headers.set('X-Frame-Options', 'DENY');
+    response.headers.set('X-XSS-Protection', '1; mode=block');
+    response.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
+  }
+  
+  // 为页面添加基础缓存头
+  if (!request.nextUrl.pathname.startsWith('/api/') && 
+      !request.nextUrl.pathname.startsWith('/_next/')) {
+    response.headers.set('Cache-Control', 'public, s-maxage=60, stale-while-revalidate=300');
+    response.headers.set('Vary', 'Accept-Encoding');
+  }
+  
+  return response;
 }
 
 // See "Matching Paths" below to learn more

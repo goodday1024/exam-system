@@ -63,7 +63,14 @@ export async function GET(request: NextRequest) {
       _count: student._count
     }))
 
-    return NextResponse.json({ students: formattedStudents })
+    const response = NextResponse.json({ students: formattedStudents })
+    
+    // 添加缓存头以配合Cloudflare缓存
+    response.headers.set('Cache-Control', 'public, s-maxage=600, stale-while-revalidate=1200')
+    response.headers.set('CDN-Cache-Control', 'public, max-age=600')
+    response.headers.set('Vary', 'Accept-Encoding')
+    
+    return response
   } catch (error) {
     console.error('Get students error:', error)
     return NextResponse.json(
