@@ -258,14 +258,8 @@ export async function GET(request: NextRequest) {
       recentActivity
     }
 
-    const response = NextResponse.json(analyticsData)
-    
-    // 添加缓存头以配合Cloudflare缓存
-    response.headers.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=300')
-    response.headers.set('CDN-Cache-Control', 'public, max-age=180')
-    response.headers.set('Vary', 'Accept-Encoding')
-    
-    return response
+    // 移除缓存头设置，实现数据实时更新
+    return NextResponse.json(analyticsData)
   } catch (error) {
     console.error('Get analytics error:', error)
     return NextResponse.json(

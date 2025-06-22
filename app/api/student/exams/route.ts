@@ -53,14 +53,8 @@ export async function GET(request: NextRequest) {
       examResult: resultMap.get(exam._id.toString()) || null
     }))
 
-    const response = NextResponse.json({ exams: formattedExams })
-    
-    // 添加缓存头以配合Cloudflare缓存
-    response.headers.set('Cache-Control', 'public, s-maxage=120, stale-while-revalidate=240')
-    response.headers.set('CDN-Cache-Control', 'public, max-age=120')
-    response.headers.set('Vary', 'Accept-Encoding')
-    
-    return response
+    // 移除缓存头设置，实现数据实时更新
+    return NextResponse.json({ exams: formattedExams })
   } catch (error) {
     console.error('Get student exams error:', error)
     return NextResponse.json(

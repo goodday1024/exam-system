@@ -4,7 +4,7 @@ import { Exam, Question } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
 import mongoose from 'mongoose'
 import { fromZonedTime } from 'date-fns-tz'
-import { invalidateExamCache, invalidateMarketplaceCache } from '@/lib/cache-invalidation'
+// 移除缓存清理依赖，实现实时数据更新
 
 // 获取考试列表
 export async function GET(request: NextRequest) {
@@ -105,14 +105,8 @@ export async function GET(request: NextRequest) {
       }
     ])
 
-    const response = NextResponse.json({ exams })
-    
-    // 添加缓存头以配合Cloudflare缓存
-    response.headers.set('Cache-Control', 'public, s-maxage=180, stale-while-revalidate=360')
-    response.headers.set('CDN-Cache-Control', 'public, max-age=180')
-    response.headers.set('Vary', 'Accept-Encoding')
-    
-    return response
+    // 移除缓存头设置，实现数据实时更新
+    return NextResponse.json({ exams })
   } catch (error) {
     console.error('Get exams error:', error)
     return NextResponse.json(
@@ -204,9 +198,7 @@ export async function POST(request: NextRequest) {
       .populate('createdBy', 'name email')
       .populate('questions.questionId')
 
-    // 异步清理相关缓存
-    invalidateExamCache(exam._id.toString(), decoded.userId)
-    invalidateMarketplaceCache()
+    // 已移除缓存清理，数据实时更新
 
     return NextResponse.json({
       message: '考试创建成功',

@@ -76,7 +76,8 @@ export async function GET(request: NextRequest) {
       previewQuestions: JSON.parse(exam.previewQuestions)
     }))
     
-    const response = NextResponse.json({
+    // 移除缓存头设置，实现数据实时更新
+    return NextResponse.json({
       exams: examsWithPreview,
       pagination: {
         page,
@@ -85,13 +86,6 @@ export async function GET(request: NextRequest) {
         pages: Math.ceil(total / limit)
       }
     })
-    
-    // 添加缓存头以配合Cloudflare缓存
-    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
-    response.headers.set('CDN-Cache-Control', 'public, max-age=300')
-    response.headers.set('Vary', 'Accept-Encoding')
-    
-    return response
   } catch (error) {
     console.error('Get marketplace exams error:', error)
     return NextResponse.json(

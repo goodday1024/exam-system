@@ -2,7 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
 import { Question, User } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
-import { invalidateQuestionCache } from '@/lib/cache-invalidation'
+// 移除缓存清理依赖，实现实时数据更新
 
 export async function GET(request: NextRequest) {
   try {
@@ -28,14 +28,8 @@ export async function GET(request: NextRequest) {
       _id: question._id.toString()
     }))
 
-    const response = NextResponse.json({ questions: serializedQuestions })
-    
-    // 添加缓存头以配合Cloudflare缓存
-    response.headers.set('Cache-Control', 'public, s-maxage=300, stale-while-revalidate=600')
-    response.headers.set('CDN-Cache-Control', 'public, max-age=300')
-    response.headers.set('Vary', 'Accept-Encoding')
-    
-    return response
+    // 移除缓存头设置，实现数据实时更新
+    return NextResponse.json({ questions: serializedQuestions })
   } catch (error) {
     console.error('获取题目失败:', error)
     return NextResponse.json({ error: '服务器错误' }, { status: 500 })
@@ -82,8 +76,7 @@ export async function POST(request: NextRequest) {
     const populatedQuestion = await Question.findById(question._id)
       .populate('createdBy', 'name email')
 
-    // 异步清理相关缓存
-    invalidateQuestionCache(question._id.toString(), decoded.userId)
+    // 已移除缓存清理，数据实时更新
 
     return NextResponse.json({
       message: '题目创建成功',

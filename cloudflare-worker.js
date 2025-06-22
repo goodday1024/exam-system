@@ -1,15 +1,20 @@
-// Cloudflare Worker for API caching with KV optimization
+// Cloudflare Worker for API caching with optimized performance
 // 配置你的后端服务器地址
 const ORIGIN_SERVER = 'https://exam.mymarkdown.fun';
 
-// KV 缓存配置 - 使用更长的 TTL 因为 KV 访问更快
+// 内存缓存配置
+const memoryCache = new Map();
+const MEMORY_CACHE_SIZE = 100;
+const MEMORY_CACHE_TTL = 30; // 30秒内存缓存
+
+// 缓存配置 - 优化后的短缓存时间
 const CACHE_CONFIG = {
-  '/api/marketplace/exams': { ttl: 600, kvTtl: 1800, staleWhileRevalidate: 900 },
-  '/api/marketplace/categories': { ttl: 1200, kvTtl: 3600, staleWhileRevalidate: 1800 },
-  '/api/student/exams': { ttl: 300, kvTtl: 900, staleWhileRevalidate: 600 },
-  '/api/teacher/analytics': { ttl: 240, kvTtl: 720, staleWhileRevalidate: 480 },
-  '/api/student/profile': { ttl: 180, kvTtl: 600, staleWhileRevalidate: 360 },
-  '/api/teacher/dashboard': { ttl: 120, kvTtl: 360, staleWhileRevalidate: 240 }
+  '/api/marketplace/exams': { ttl: 30, staleWhileRevalidate: 60 },
+  '/api/marketplace/categories': { ttl: 30, staleWhileRevalidate: 60 },
+  '/api/student/exams': { ttl: 30, staleWhileRevalidate: 60 },
+  '/api/teacher/analytics': { ttl: 30, staleWhileRevalidate: 60 },
+  '/api/student/profile': { ttl: 30, staleWhileRevalidate: 60 },
+  '/api/teacher/dashboard': { ttl: 30, staleWhileRevalidate: 60 }
 };
 
 // 不缓存的敏感路径
@@ -23,19 +28,58 @@ const NO_CACHE_PATHS = [
   '/api/teacher/grade'
 ];
 
-// 需要实时数据的路径（使用较短的缓存时间）
+// 需要实时数据的路径
 const REALTIME_PATHS = [
   '/api/student/exam/current',
   '/api/teacher/exam/live',
   '/api/notifications'
 ];
 
+// 预取模式配置
+const PREFETCH_PATTERNS = {
+  '/api/marketplace/exams': ['/api/marketplace/categories'],
+  '/api/student/exams': ['/api/student/profile'],
+  '/api/teacher/dashboard': ['/api/teacher/analytics']
+};
+
+// 内存缓存函数
+function getFromMemory(key) {
+  const cached = memoryCache.get(key);
+  if (!cached) return null;
+  
+  const age = (Date.now() - cached.timestamp) / 1000;
+  if (age > MEMORY_CACHE_TTL) {
+    memoryCache.delete(key);
+    return null;
+  }
+  
+  return {
+    data: cached.data,
+    headers: cached.headers,
+    age: age
+  };
+}
+
+function putToMemory(key, data, headers) {
+  // LRU策略：限制缓存大小
+  if (memoryCache.size >= MEMORY_CACHE_SIZE) {
+    const firstKey = memoryCache.keys().next().value;
+    memoryCache.delete(firstKey);
+  }
+  
+  memoryCache.set(key, {
+    data,
+    headers,
+    timestamp: Date.now()
+  });
+}
+
 // 获取缓存配置
 function getCacheConfig(pathname) {
   // 检查是否为实时路径
   for (const path of REALTIME_PATHS) {
     if (pathname.startsWith(path)) {
-      return { ttl: 30, kvTtl: 60, staleWhileRevalidate: 60 };
+      return { ttl: 30, staleWhileRevalidate: 60 };
     }
   }
   
@@ -47,12 +91,7 @@ function getCacheConfig(pathname) {
   }
   
   // 默认配置
-  return { ttl: 60, kvTtl: 180, staleWhileRevalidate: 120 };
-}
-
-// 检查是否为实时路径
-function isRealtimePath(pathname) {
-  return REALTIME_PATHS.some(path => pathname.startsWith(path));
+  return { ttl: 30, staleWhileRevalidate: 60 };
 }
 
 // 检查是否应该缓存
@@ -73,57 +112,96 @@ function generateCacheKey(pathname, search) {
   return `cache:${pathname}${search || ''}`;
 }
 
-// 生成 KV 键
-function generateKVKey(pathname, search) {
-  const key = `kv:${pathname}${search || ''}`;
-  // KV 键长度限制为 512 字节，需要处理过长的键
-  if (key.length > 500) {
-    const hash = btoa(key).substring(0, 50);
-    return `kv:${pathname.split('/').slice(0, 3).join('/')}:${hash}`;
-  }
-  return key;
+// 生成 ETag
+function generateETag(content) {
+  const hash = btoa(content).substring(0, 16);
+  return `"${hash}"`;
 }
 
-// 从 KV 获取缓存数据
-async function getFromKV(env, kvKey) {
-  try {
-    if (!env.KV_STATIC) return null;
-    
-    const cached = await env.KV_STATIC.get(kvKey, { type: 'json' });
-    if (!cached) return null;
-    
-    const now = Date.now();
-    const age = (now - cached.timestamp) / 1000;
-    
-    return {
-      data: cached.data,
-      headers: cached.headers || {},
-      timestamp: cached.timestamp,
-      age: age
-    };
-  } catch (error) {
-    console.error('KV get error:', error);
-    return null;
-  }
-}
-
-// 存储数据到 KV
-async function putToKV(env, kvKey, data, headers, ttl) {
-  try {
-    if (!env.KV_STATIC) return;
-    
-    const cacheData = {
-      data: data,
-      headers: headers,
-      timestamp: Date.now()
-    };
-    
-    await env.KV_STATIC.put(kvKey, JSON.stringify(cacheData), {
-      expirationTtl: ttl
+// 处理条件请求
+function handleConditionalRequest(request, cachedResponse) {
+  const ifNoneMatch = request.headers.get('If-None-Match');
+  const cachedETag = cachedResponse.headers.get('ETag');
+  
+  if (ifNoneMatch && cachedETag && ifNoneMatch === cachedETag) {
+    return new Response(null, {
+      status: 304,
+      headers: {
+        'ETag': cachedETag,
+        'Cache-Control': cachedResponse.headers.get('Cache-Control'),
+        'CF-Cache-Status': 'NOT-MODIFIED'
+      }
     });
-  } catch (error) {
-    console.error('KV put error:', error);
   }
+  
+  return null;
+}
+
+// 压缩响应
+async function compressResponse(response) {
+  const acceptEncoding = response.headers.get('Accept-Encoding') || '';
+  
+  if (acceptEncoding.includes('gzip')) {
+    const stream = new CompressionStream('gzip');
+    const compressedStream = response.body.pipeThrough(stream);
+    
+    return new Response(compressedStream, {
+      headers: {
+        ...Object.fromEntries(response.headers.entries()),
+        'Content-Encoding': 'gzip',
+        'Vary': 'Accept-Encoding'
+      }
+    });
+  }
+  
+  return response;
+}
+
+// 智能预取相关资源
+async function prefetchRelated(pathname, ctx) {
+  const related = PREFETCH_PATTERNS[pathname];
+  if (related) {
+    ctx.waitUntil(
+      Promise.all(related.map(path => 
+        fetch(`${ORIGIN_SERVER}${path}`)
+          .then(response => {
+            if (response.ok) {
+              const cacheKey = generateCacheKey(path, '');
+              const cache = caches.default;
+              return cache.put(cacheKey, response.clone());
+            }
+          })
+          .catch(() => {}) // 忽略预取错误
+      ))
+    );
+  }
+}
+
+// 处理API响应优化
+async function processApiResponse(response, pathname) {
+  if (pathname.includes('/marketplace/exams')) {
+    try {
+      const data = await response.json();
+      
+      // 在边缘进行数据过滤和排序
+      const processed = data
+        .filter(exam => exam.published)
+        .sort((a, b) => new Date(b.createdAt).getTime() - new Date(a.createdAt).getTime())
+        .slice(0, 20); // 只返回前20个
+      
+      return new Response(JSON.stringify(processed), {
+        headers: {
+          ...Object.fromEntries(response.headers.entries()),
+          'Content-Type': 'application/json'
+        }
+      });
+    } catch (error) {
+      // 如果处理失败，返回原始响应
+      return response;
+    }
+  }
+  
+  return response;
 }
 
 // 添加安全头
@@ -132,6 +210,7 @@ function addSecurityHeaders(response) {
   newResponse.headers.set('X-Content-Type-Options', 'nosniff');
   newResponse.headers.set('X-Frame-Options', 'DENY');
   newResponse.headers.set('X-XSS-Protection', '1; mode=block');
+  newResponse.headers.set('Referrer-Policy', 'strict-origin-when-cross-origin');
   return newResponse;
 }
 
@@ -139,15 +218,15 @@ export default {
   async fetch(request, env, ctx) {
     try {
       // 解析请求URL
-      const requestUrl = new URL(request.url)
-      const pathname = requestUrl.pathname
-      const search = requestUrl.search
-      const method = request.method
+      const requestUrl = new URL(request.url);
+      const pathname = requestUrl.pathname;
+      const search = requestUrl.search;
+      const method = request.method;
       
       // 处理缓存清理请求
       if (pathname === '/__purge_cache' && method === 'POST') {
-        return handleCachePurge(request, env)
-      };
+        return handleCachePurge(request, env);
+      }
       
       // 构建转发URL
       const targetUrl = new URL(ORIGIN_SERVER);
@@ -167,7 +246,7 @@ export default {
         return addSecurityHeaders(response);
       }
       
-      // 如果不应该缓存，直接转发并添加安全头
+      // 如果不应该缓存，直接转发
       if (!shouldCache(method, pathname)) {
         const response = await fetch(forwardRequest);
         const secureResponse = addSecurityHeaders(response);
@@ -175,28 +254,25 @@ export default {
         return secureResponse;
       }
       
-      // 多层缓存逻辑：KV -> Edge Cache -> Origin
+      // 多层缓存逻辑：Memory -> Edge Cache -> Origin
       const cacheKey = generateCacheKey(pathname, search);
-      const kvKey = generateKVKey(pathname, search);
       const cache = caches.default;
       const config = getCacheConfig(pathname);
       
-      // 第一层：尝试从 KV 获取（最快）
-      const kvCached = await getFromKV(env, kvKey);
-      if (kvCached && kvCached.age < config.kvTtl) {
-        const response = new Response(kvCached.data, {
+      // 第一层：尝试从内存缓存获取（最快）
+      const memoryCached = getFromMemory(cacheKey);
+      if (memoryCached) {
+        const response = new Response(memoryCached.data, {
           headers: {
-            ...kvCached.headers,
-            'CF-Cache-Status': kvCached.age > config.ttl ? 'KV-STALE' : 'KV-HIT',
-            'Cache-Age': Math.floor(kvCached.age).toString(),
-            'Cache-Layer': 'KV'
+            ...memoryCached.headers,
+            'CF-Cache-Status': 'MEMORY-HIT',
+            'Cache-Age': Math.floor(memoryCached.age).toString(),
+            'Cache-Layer': 'Memory'
           }
         });
         
-        // 如果 KV 数据过期但仍在 stale-while-revalidate 期间，异步更新
-        if (kvCached.age > config.ttl && kvCached.age < config.kvTtl) {
-          ctx.waitUntil(updateAllCaches(forwardRequest, cacheKey, kvKey, cache, env, pathname));
-        }
+        // 触发预取
+        prefetchRelated(pathname, ctx);
         
         return addSecurityHeaders(response);
       }
@@ -204,17 +280,25 @@ export default {
       // 第二层：尝试从 Edge Cache 获取
       let cachedResponse = await cache.match(cacheKey);
       
+      // 处理条件请求（ETag）
+      if (cachedResponse) {
+        const conditionalResponse = handleConditionalRequest(request, cachedResponse);
+        if (conditionalResponse) {
+          return addSecurityHeaders(conditionalResponse);
+        }
+      }
+      
       if (cachedResponse) {
         const cacheDate = new Date(cachedResponse.headers.get('Date') || Date.now());
         const age = (Date.now() - cacheDate.getTime()) / 1000;
         
-        // 如果 Edge Cache 有效，同时异步更新 KV
+        // 如果 Edge Cache 有效
         if (age < config.ttl + config.staleWhileRevalidate) {
           const responseText = await cachedResponse.text();
           const responseHeaders = Object.fromEntries(cachedResponse.headers.entries());
           
-          // 异步更新 KV
-          ctx.waitUntil(putToKV(env, kvKey, responseText, responseHeaders, config.kvTtl));
+          // 异步更新内存缓存
+          putToMemory(cacheKey, responseText, responseHeaders);
           
           const response = new Response(responseText, {
             headers: {
@@ -225,10 +309,13 @@ export default {
             }
           });
           
-          // 如果过期但仍在 stale-while-revalidate 期间，异步更新所有缓存
+          // 如果过期但仍在 stale-while-revalidate 期间，异步更新
           if (age > config.ttl) {
-            ctx.waitUntil(updateAllCaches(forwardRequest, cacheKey, kvKey, cache, env, pathname));
+            ctx.waitUntil(updateCache(forwardRequest, cacheKey, cache, pathname));
           }
+          
+          // 触发预取
+          prefetchRelated(pathname, ctx);
           
           return addSecurityHeaders(response);
         }
@@ -238,8 +325,12 @@ export default {
       const response = await fetch(forwardRequest);
       
       if (response.ok && response.status === 200) {
-        const responseText = await response.text();
-        const responseHeaders = Object.fromEntries(response.headers.entries());
+        let processedResponse = await processApiResponse(response.clone(), pathname);
+        const responseText = await processedResponse.text();
+        const responseHeaders = Object.fromEntries(processedResponse.headers.entries());
+        
+        // 生成 ETag
+        const etag = generateETag(responseText);
         
         // 添加缓存控制头
         responseHeaders['Cache-Control'] = `public, max-age=${config.ttl}, s-maxage=${config.ttl}, stale-while-revalidate=${config.staleWhileRevalidate}`;
@@ -247,11 +338,12 @@ export default {
         responseHeaders['Vary'] = 'Accept-Encoding';
         responseHeaders['Date'] = new Date().toUTCString();
         responseHeaders['Cache-Layer'] = 'Origin';
+        responseHeaders['ETag'] = etag;
         
-        // 创建响应对象
+        // 创建最终响应
         const finalResponse = new Response(responseText, {
-          status: response.status,
-          statusText: response.statusText,
+          status: processedResponse.status,
+          statusText: processedResponse.statusText,
           headers: responseHeaders
         });
         
@@ -259,14 +351,17 @@ export default {
         ctx.waitUntil(Promise.all([
           // 存储到 Edge Cache
           cache.put(cacheKey, finalResponse.clone()),
-          // 存储到 KV（如果不是实时路径）
-          !isRealtimePath(pathname) ? putToKV(env, kvKey, responseText, responseHeaders, config.kvTtl) : Promise.resolve()
+          // 存储到内存缓存
+          Promise.resolve(putToMemory(cacheKey, responseText, responseHeaders))
         ]));
+        
+        // 触发预取
+        prefetchRelated(pathname, ctx);
         
         return addSecurityHeaders(finalResponse);
       }
       
-      // 非 200 响应，不缓存但添加状态头
+      // 非 200 响应，不缓存
       const finalResponse = new Response(response.body, response);
       finalResponse.headers.set('CF-Cache-Status', 'MISS');
       finalResponse.headers.set('Cache-Layer', 'Origin');
@@ -275,7 +370,7 @@ export default {
     } catch (error) {
       console.error('Worker error:', error);
       
-      // 发生错误时，尝试直接转发请求
+      // 错误处理：尝试直接转发
       try {
         const requestUrl = new URL(request.url);
         const targetUrl = new URL(ORIGIN_SERVER);
@@ -306,46 +401,45 @@ export default {
   }
 };
 
-// 异步更新所有缓存层
-async function updateAllCaches(forwardRequest, cacheKey, kvKey, cache, env, pathname) {
+// 异步更新缓存
+async function updateCache(forwardRequest, cacheKey, cache, pathname) {
   try {
     const response = await fetch(forwardRequest);
     if (response.ok && response.status === 200) {
       const config = getCacheConfig(pathname);
-      const responseText = await response.text();
-      const responseHeaders = Object.fromEntries(response.headers.entries());
+      let processedResponse = await processApiResponse(response.clone(), pathname);
+      const responseText = await processedResponse.text();
+      const responseHeaders = Object.fromEntries(processedResponse.headers.entries());
+      
+      // 生成 ETag
+      const etag = generateETag(responseText);
       
       // 添加缓存控制头
       responseHeaders['Cache-Control'] = `public, max-age=${config.ttl}, s-maxage=${config.ttl}, stale-while-revalidate=${config.staleWhileRevalidate}`;
       responseHeaders['CF-Cache-Status'] = 'REVALIDATED';
       responseHeaders['Vary'] = 'Accept-Encoding';
       responseHeaders['Date'] = new Date().toUTCString();
+      responseHeaders['ETag'] = etag;
       
       // 创建缓存响应
       const responseToCache = new Response(responseText, {
-        status: response.status,
-        statusText: response.statusText,
+        status: processedResponse.status,
+        statusText: processedResponse.statusText,
         headers: responseHeaders
       });
       
-      // 同时更新两个缓存层
-      await Promise.all([
-        cache.put(cacheKey, responseToCache.clone()),
-        !isRealtimePath(pathname) ? putToKV(env, kvKey, responseText, responseHeaders, config.kvTtl) : Promise.resolve()
-      ]);
+      // 更新缓存
+      await cache.put(cacheKey, responseToCache.clone());
+      
+      // 更新内存缓存
+      putToMemory(cacheKey, responseText, responseHeaders);
     }
   } catch (error) {
     console.error('Cache update failed:', error);
   }
 }
 
-// 兼容性：保留原有的 updateCache 函数
-async function updateCache(forwardRequest, cacheKey, cache, pathname) {
-  console.warn('updateCache is deprecated, use updateAllCaches instead');
-  return updateAllCaches(forwardRequest, cacheKey, null, cache, null, pathname);
-}
-
-// 缓存清理函数 - 支持 KV 和 Edge Cache
+// 缓存清理函数
 export async function purgeCache(patterns, env) {
   const cache = caches.default;
   const promises = [];
@@ -362,26 +456,13 @@ export async function purgeCache(patterns, env) {
     }
   }
   
-  // 清理 KV Cache（如果可用）
-  if (env && env.KV_STATIC) {
-    try {
-      // KV 不支持批量删除，需要根据模式生成可能的键
-      for (const pattern of patterns) {
-        // 生成常见的 KV 键模式进行删除
-        const commonPaths = [
-          `/api${pattern}`,
-          `/api/marketplace${pattern}`,
-          `/api/student${pattern}`,
-          `/api/teacher${pattern}`
-        ];
-        
-        for (const path of commonPaths) {
-          const kvKey = generateKVKey(path, '');
-          promises.push(env.KV_STATIC.delete(kvKey).catch(() => {})); // 忽略删除错误
-        }
+  // 清理内存缓存
+  for (const [key, value] of memoryCache.entries()) {
+    for (const pattern of patterns) {
+      if (key.includes(pattern)) {
+        memoryCache.delete(key);
+        break;
       }
-    } catch (error) {
-      console.error('KV purge error:', error);
     }
   }
   
@@ -397,32 +478,8 @@ export async function purgeCacheByPath(pathname, env) {
   const cache = caches.default;
   promises.push(cache.delete(cacheKey));
   
-  // 清理 KV Cache
-  if (env && env.KV_STATIC) {
-    const kvKey = generateKVKey(pathname, '');
-    promises.push(env.KV_STATIC.delete(kvKey).catch(() => {}));
-  }
-  
-  await Promise.all(promises);
-}
-
-// 智能缓存预热
-export async function warmupCache(urls, env) {
-  const promises = [];
-  
-  for (const url of urls) {
-    promises.push(
-      fetch(url)
-        .then(response => {
-          if (response.ok) {
-            console.log(`Warmed up: ${url}`);
-          }
-        })
-        .catch(error => {
-          console.error(`Warmup failed for ${url}:`, error);
-        })
-    );
-  }
+  // 清理内存缓存
+  memoryCache.delete(cacheKey);
   
   await Promise.all(promises);
 }
@@ -430,7 +487,7 @@ export async function warmupCache(urls, env) {
 // 处理缓存清理请求
 async function handleCachePurge(request, env) {
   try {
-    // 验证授权（简单的 token 验证）
+    // 验证授权
     const authHeader = request.headers.get('Authorization');
     const expectedToken = env.CACHE_PURGE_TOKEN || 'default-token';
     
