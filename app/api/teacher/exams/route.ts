@@ -4,6 +4,7 @@ import { Exam, Question } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
 import mongoose from 'mongoose'
 import { fromZonedTime } from 'date-fns-tz'
+import { invalidateExamCache, invalidateMarketplaceCache } from '@/lib/cache-invalidation'
 
 // 获取考试列表
 export async function GET(request: NextRequest) {
@@ -202,6 +203,10 @@ export async function POST(request: NextRequest) {
     const populatedExam = await Exam.findById(exam._id)
       .populate('createdBy', 'name email')
       .populate('questions.questionId')
+
+    // 异步清理相关缓存
+    invalidateExamCache(exam._id.toString(), decoded.userId)
+    invalidateMarketplaceCache()
 
     return NextResponse.json({
       message: '考试创建成功',

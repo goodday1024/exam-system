@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
 import { Question, User } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
+import { invalidateQuestionCache } from '@/lib/cache-invalidation'
 
 export async function GET(request: NextRequest) {
   try {
@@ -80,6 +81,9 @@ export async function POST(request: NextRequest) {
 
     const populatedQuestion = await Question.findById(question._id)
       .populate('createdBy', 'name email')
+
+    // 异步清理相关缓存
+    invalidateQuestionCache(question._id.toString(), decoded.userId)
 
     return NextResponse.json({
       message: '题目创建成功',

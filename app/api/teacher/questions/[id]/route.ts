@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
 import { Question, Exam } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
+import { invalidateQuestionCache } from '@/lib/cache-invalidation'
 
 // 更新题目
 export async function PUT(request: NextRequest, { params }: { params: { id: string } }) {
@@ -57,6 +58,9 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
       { new: true }
     ).populate('createdBy', 'name email')
 
+    // 异步清理相关缓存
+    invalidateQuestionCache(params.id, decoded.userId)
+
     return NextResponse.json({
       message: '题目更新成功',
       question
@@ -111,6 +115,9 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
     }
 
     await Question.findByIdAndDelete(params.id)
+
+    // 异步清理相关缓存
+    invalidateQuestionCache(params.id, decoded.userId)
 
     return NextResponse.json({ message: '删除成功' })
   } catch (error) {

@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server'
 import connectDB from '@/lib/mongodb'
 import { Exam, ExamResult, Question } from '@/lib/models'
 import { verifyToken } from '@/lib/jwt'
+import { invalidateExamCache, invalidateMarketplaceCache } from '@/lib/cache-invalidation'
 
 // 获取考试详情
 export async function GET(request: NextRequest, { params }: { params: { id: string } }) {
@@ -117,6 +118,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
         { new: true }
       ).populate('createdBy', 'name email')
 
+      // 异步清理相关缓存
+      invalidateExamCache(examId, decoded.userId)
+      invalidateMarketplaceCache()
+
       return NextResponse.json({
         message: '考试更新成功',
         exam: updatedExam
@@ -204,6 +209,10 @@ export async function PUT(request: NextRequest, { params }: { params: { id: stri
     ).populate('questions')
      .populate('createdBy', 'name email')
 
+    // 异步清理相关缓存
+    invalidateExamCache(examId, decoded.userId)
+    invalidateMarketplaceCache()
+
     return NextResponse.json({
       message: '考试更新成功',
       exam: updatedExam
@@ -263,6 +272,10 @@ export async function DELETE(request: NextRequest, { params }: { params: { id: s
       // 删除考试
       Exam.findByIdAndDelete(examId)
     ])
+
+    // 异步清理相关缓存
+    invalidateExamCache(examId, decoded.userId)
+    invalidateMarketplaceCache()
 
     return NextResponse.json({
       message: '考试删除成功'
